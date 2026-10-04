@@ -1,10 +1,7 @@
 // Package model defines the chat-model interface the benchmark's agents
 // talk to, the models.yaml registry that names concrete models, and the
-// adapters that implement the interface.
-//
-// Secrets never live in models.yaml: an entry names the environment
-// variable that holds its API key, and the key is read when the model is
-// opened.
+// adapters that implement the interface: llama (a local GGUF model run
+// in-process) and fake (scripted replies for tests).
 package model
 
 import (
@@ -33,7 +30,7 @@ type Request struct {
 	Temperature *float64
 }
 
-// Usage counts tokens as the provider reports them.
+// Usage counts tokens.
 type Usage struct {
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
@@ -42,8 +39,8 @@ type Usage struct {
 // Response is the model's reply.
 type Response struct {
 	Text string
-	// StopReason is the provider's reason for ending, such as "stop" or
-	// "length", passed through unchanged.
+	// StopReason says why generation ended: "stop" when the model ended
+	// its turn, "length" when the token budget ran out.
 	StopReason string
 	Usage      Usage
 }
