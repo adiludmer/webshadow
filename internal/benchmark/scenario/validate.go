@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/adiludmer/webshadow/internal/benchmark/har"
 )
 
 // Severity tells whether an issue blocks a run.
@@ -150,30 +152,33 @@ func (v *validator) file(key, name string) (string, bool) {
 	return path, true
 }
 
-// checkHAR confirms the file is a HAR document with a log.entries array.
-// Deeper parsing and the sanitization check live in the har package.
+// checkHAR parses the HAR and refuses it if credential material remains,
+// so the corpus only ever holds sanitized captures.
 func (v *validator) checkHAR(path string) {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		v.errorf("har: %v", err)
 		return
 	}
-	var doc struct {
-		Log *struct {
-			Entries *[]json.RawMessage `json:"entries"`
-		} `json:"log"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		v.errorf("har: %s is not valid JSON: %v", filepath.Base(path), err)
+	defer f.Close()
+	trace, err := har.Parse(f)
+	if err != nil {
+		v.errorf("har: %s: %v", filepath.Base(path), err)
 		return
 	}
-	if doc.Log == nil || doc.Log.Entries == nil {
-		v.errorf("har: %s has no log.entries array", filepath.Base(path))
-		return
-	}
-	if len(*doc.Log.Entries) == 0 {
+	if len(trace.Entries) == 0 {
 		v.warnf("har: %s has no entries", filepath.Base(path))
 	}
+	if found := har.Unsanitized(trace); len(found) > 0 {
+		v.errorf("har: %s is not sanitized (%s%s); run webshadow bench sanitize", filepath.Base(path), found[0], more(len(found)-1))
+	}
+}
+
+func more(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" and %d more", n)
 }
 
 func (v *validator) readExpected(path string) map[string]any {
