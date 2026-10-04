@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func runCLI(args ...string) (code int, stdout, stderr string) {
@@ -87,6 +88,66 @@ func TestSanitizeAndInspect(t *testing.T) {
 	} {
 		if code, _, _ := runCLI(args...); code != 2 {
 			t.Errorf("run(%q) = %d, want 2", args, code)
+		}
+	}
+}
+
+func TestAnswer(t *testing.T) {
+	dir := t.TempDir()
+	models := filepath.Join(dir, "models.yaml")
+	if err := os.WriteFile(models, []byte(`models:
+  - id: scripted
+    adapter: fake
+    replies:
+      - '{"action": "search", "args": {"query": "enso"}}'
+      - '{"action": "finish", "answer": {"amount": 15000000, "currency": "USD"}}'
+      - '{"action": "finish", "answer": {"amount": 1, "currency": "USD"}}'
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now = func() time.Time { return time.Date(2026, 10, 4, 16, 0, 0, 0, time.UTC) }
+	defer func() { now = time.Now }()
+
+	scenarioDir := filepath.Join("..", "..", "benchmarks", "geektime-enso-funding")
+	tree := filepath.Join("..", "..", "internal", "benchmark", "reader", "testdata", "enso-tree")
+	runs := filepath.Join(dir, "runs")
+	code, stdout, stderr := runCLI("bench", "answer", scenarioDir, "--tree", tree, "--reader", "scripted", "--models", models, "--runs", runs, "--repetitions", "2")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	for _, want := range []string{"run 20261004T160000Z: geektime-enso-funding with reader scripted", "(3 files, sha256:", "repetition 1: success in 2 steps", "repetition 2: wrong_answer in 1 steps"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("output lacks %q:\n%s", want, stdout)
+		}
+	}
+	rec := filepath.Join(runs, "20261004T160000Z", "cases", "geektime-enso-funding", "external", "scripted", "repetition-01.json")
+	data, err := os.ReadFile(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"status": "success"`, `"reader_prompt": "reader-v1"`, `"tree_digest": "sha256:`, `"action": "search"`} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("record lacks %s", want)
+		}
+	}
+
+	for _, args := range [][]string{
+		{"bench", "answer", scenarioDir},
+		{"bench", "answer", scenarioDir, "--tree", tree},
+		{"bench", "answer", "--tree", tree, "--reader", "scripted"},
+		{"bench", "answer", scenarioDir, "--tree", tree, "--reader", "scripted", "--repetitions", "0"},
+	} {
+		if code, _, _ := runCLI(args...); code != 2 {
+			t.Errorf("run(%q) = %d, want 2", args, code)
+		}
+	}
+	for args, want := range map[string]string{
+		"--reader nobody":  `model "nobody" is not in the registry`,
+		"--tree /nonexist": "opening tree",
+	} {
+		full := append([]string{"bench", "answer", scenarioDir, "--tree", tree, "--reader", "scripted", "--models", models, "--runs", runs}, strings.Fields(args)...)
+		if code, _, stderr := runCLI(full...); code != 1 || !strings.Contains(stderr, want) {
+			t.Errorf("%s: exit %d, stderr %q", args, code, stderr)
 		}
 	}
 }
