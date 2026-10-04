@@ -31,3 +31,7 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Benchmark run output and raw (unsanitized) HAR captures
+/runs/
+*.raw.har
