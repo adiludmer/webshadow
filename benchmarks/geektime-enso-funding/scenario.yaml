@@ -1,0 +1,33 @@
+id: geektime-enso-funding
+name: How much did Enso raise in its latest round (Geektime)
+version: 1
+tags:
+  - news
+  - funding
+  - hebrew
+  - real-capture
+
+har: session.har
+goal: goal.md
+expected: expected.json
+
+evaluation:
+  type: fields
+  required_fields:
+    - amount
+    - currency
+  allow_extra_fields: true
+  normalizers:
+    amount:
+      currency: true
+    currency:
+      case: upper
+      whitespace: trim
+
+limits:
+  generate:
+    max_steps: 200
+    timeout_seconds: 900
+  answer:
+    max_steps: 20
+    timeout_seconds: 120

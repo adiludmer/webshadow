@@ -11,7 +11,9 @@ import (
 const benchUsage = `usage: webshadow bench <command> [arguments]
 
 Commands:
-  validate <path>...   check scenario directories or suites before running them
+  validate <path>...      check scenario directories or suites before running them
+  sanitize <har> --out f  write a copy of a HAR with credentials and personal data removed
+  inspect-har <har>       show what the benchmark extracts from a HAR
 `
 
 func runBench(args []string, stdout, stderr io.Writer) int {
@@ -22,6 +24,10 @@ func runBench(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "validate":
 		return benchValidate(args[1:], stdout, stderr)
+	case "sanitize":
+		return benchSanitize(args[1:], stdout, stderr)
+	case "inspect-har":
+		return benchInspectHAR(args[1:], stdout, stderr)
 	case "-h", "-help", "--help", "help":
 		fmt.Fprint(stdout, benchUsage)
 		return 0

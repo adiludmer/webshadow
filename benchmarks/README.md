@@ -47,6 +47,24 @@ Normalizer options: `case` (`lower` or `upper`), `whitespace` (`trim` or
 `collapse`), `numeric_tolerance`, `date` (a Go time layout), `url`, `currency`
 and `unordered` (compare arrays as multisets).
 
+## Adding a real capture
+
+Record the session in Chrome DevTools (Network tab, "Export HAR"), then
+sanitize it before it goes anywhere near the repo. Raw captures stay out of
+git (`*.raw.har` is ignored).
+
+```
+go run ./cmd/webshadow bench sanitize capture.raw.har --out session.har \
+  --drop media,font,telemetry,stylesheet,script --trim-initiators
+go run ./cmd/webshadow bench inspect-har session.har --names
+```
+
+`sanitize` redacts cookies, auth and CSRF headers, API keys, session and
+tracking IDs in URLs, form bodies and JSON bodies. `inspect-har --names` lists
+every header and parameter name that is left, so you can spot anything
+site-specific before committing. `validate` refuses a HAR that still carries
+cookies or auth headers.
+
 Check the suite with:
 
 ```
