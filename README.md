@@ -12,6 +12,25 @@ go run ./cmd/webshadow bench validate benchmarks/
 go test ./...
 ```
 
+### Answering from a shadow tree
+
+`bench answer` runs the reader stage: a model gets the scenario's goal and
+a shadow tree, explores the tree with read-only `list`, `read` and `search`
+tools, and finishes with a JSON answer that is scored against
+`expected.json`.
+
+```
+make llama
+WEBSHADOW_LLAMA_MODEL=~/models/model.gguf \
+  bin/webshadow bench answer benchmarks/geektime-enso-funding --tree path/to/shadow --reader local-llama
+```
+
+Each repetition writes a record, with the answer, the per-field score, token
+usage and the full transcript, to
+`runs/<run id>/cases/<scenario>/<generator>/<reader>/repetition-NN.json`.
+Its status is `success`, `wrong_answer`, `invalid_output`, `step_limit`,
+`token_limit`, `timeout` or `error`.
+
 ### Models
 
 `models.yaml` lists the models the benchmark can run as generators or

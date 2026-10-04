@@ -14,6 +14,8 @@ Commands:
   validate <path>...      check scenario directories or suites before running them
   sanitize <har> --out f  write a copy of a HAR with credentials and personal data removed
   inspect-har <har>       show what the benchmark extracts from a HAR
+  answer <scenario> --tree <dir> --reader <model>
+                          answer a scenario's goal from a shadow tree and score it
 `
 
 func runBench(args []string, stdout, stderr io.Writer) int {
@@ -28,6 +30,8 @@ func runBench(args []string, stdout, stderr io.Writer) int {
 		return benchSanitize(args[1:], stdout, stderr)
 	case "inspect-har":
 		return benchInspectHAR(args[1:], stdout, stderr)
+	case "answer":
+		return benchAnswer(args[1:], stdout, stderr)
 	case "-h", "-help", "--help", "help":
 		fmt.Fprint(stdout, benchUsage)
 		return 0
