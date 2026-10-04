@@ -21,3 +21,27 @@ jobs:
         run: go test ./...
       - name: validate benchmark suite
         run: go run ./cmd/webshadow bench validate benchmarks/
+
+  # Builds llama.cpp from the pinned submodule and runs the tests against
+  # the embedded runtime, including the tiny generated model.
+  llama:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: llama.cpp revision
+        id: llama
+        run: echo "sha=$(git rev-parse HEAD:third_party/llama.cpp)" >> "$GITHUB_OUTPUT"
+      - name: cache llama.cpp build
+        uses: actions/cache@v4
+        with:
+          path: third_party/llama.cpp/build
+          key: llama-${{ runner.os }}-${{ steps.llama.outputs.sha }}-${{ hashFiles('Makefile') }}
+      - name: vet
+        run: CGO_ENABLED=1 go vet -tags llama ./...
+      - name: test
+        run: make test-llama

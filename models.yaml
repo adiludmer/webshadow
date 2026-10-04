@@ -1,0 +1,17 @@
+# Models the benchmark can run, as generators or readers. Run records name
+# models by id.
+models:
+  # A local GGUF model run in-process by llama.cpp. Needs a binary built
+  # with `make llama`; point WEBSHADOW_LLAMA_MODEL at the model file.
+  - id: local-llama
+    adapter: llama
+    model_path: ${WEBSHADOW_LLAMA_MODEL}
+    context_size: 16384
+    max_tokens: 2048
+    temperature: 0
+
+  # Replies with fixed text; for smoke-testing the pipeline without a model.
+  - id: fake-noop
+    adapter: fake
+    replies:
+      - '{"action": "finish", "answer": {}}'

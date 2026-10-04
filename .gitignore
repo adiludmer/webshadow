@@ -35,3 +35,6 @@ go.work.sum
 # Benchmark run output and raw (unsanitized) HAR captures
 /runs/
 *.raw.har
+
+# Build output
+/bin/
