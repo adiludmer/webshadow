@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	iofs "io/fs"
 	"os"
 	"time"
 
@@ -66,6 +68,19 @@ func benchAnswer(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(fmt.Errorf("reading tree: %w", err))
 	}
+	// A tree from `bench generate` has a manifest naming its generator.
+	generatorID, generatorPrompt := record.ExternalGenerator, ""
+	if manifest, err := record.ReadTree(*treeDir); err == nil {
+		if manifest.Digest != digest {
+			return fail(fmt.Errorf("tree %s changed since it was generated (digest %s, manifest says %s)", *treeDir, digest, manifest.Digest))
+		}
+		if manifest.ScenarioID != s.ID {
+			return fail(fmt.Errorf("tree %s was generated for scenario %s, not %s", *treeDir, manifest.ScenarioID, s.ID))
+		}
+		generatorID, generatorPrompt = manifest.GeneratorModelID, manifest.GeneratorPrompt
+	} else if !errors.Is(err, iofs.ErrNotExist) {
+		return fail(err)
+	}
 
 	reg, err := model.LoadRegistry(*modelsPath)
 	if err != nil {
@@ -81,7 +96,7 @@ func benchAnswer(args []string, stdout, stderr io.Writer) int {
 	if id == "" {
 		id = record.NewRunID(now())
 	}
-	fmt.Fprintf(stdout, "run %s: %s with reader %s on %s (%d files, %s)\n", id, s.ID, *readerID, *treeDir, stats.Files, digest)
+	fmt.Fprintf(stdout, "run %s: %s with reader %s on %s from %s (%d files, %s)\n", id, s.ID, *readerID, *treeDir, generatorID, stats.Files, digest)
 	for rep := 1; rep <= *reps; rep++ {
 		r, err := reader.Run(context.Background(), m, s, tree, reader.Options{Now: now})
 		if err != nil {
@@ -93,7 +108,8 @@ func benchAnswer(args []string, stdout, stderr io.Writer) int {
 			ScenarioID:       s.ID,
 			ScenarioVersion:  s.Version,
 			Repetition:       rep,
-			GeneratorModelID: record.ExternalGenerator,
+			GeneratorModelID: generatorID,
+			GeneratorPrompt:  generatorPrompt,
 			ReaderModelID:    *readerID,
 			ReaderPrompt:     reader.PromptVersion,
 			TreeDigest:       digest,

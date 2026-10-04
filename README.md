@@ -12,6 +12,23 @@ go run ./cmd/webshadow bench validate benchmarks/
 go test ./...
 ```
 
+### Generating a shadow tree
+
+`bench generate` runs the generator stage: a model reads the scenario's
+sanitized HAR through paged `har_index` and `har_entry` tools and writes
+Markdown files with a sandboxed `write` tool. It never sees the goal.
+
+```
+WEBSHADOW_LLAMA_MODEL=~/models/model.gguf \
+  bin/webshadow bench generate benchmarks/geektime-enso-funding --generator local-llama
+```
+
+The tree lands in `runs/<run id>/trees/<scenario>/<generator>/tree-NN/`,
+with its files made read-only, and `tree-NN.json` next to it records the
+digest, file count, status (`generated` or `generation_failed`) and the
+generator's full transcript. Writes are limited to `.md` files inside the
+tree, 64 KB per file, 500 files and 8 MB in total.
+
 ### Answering from a shadow tree
 
 `bench answer` runs the reader stage: a model gets the scenario's goal and
@@ -25,7 +42,8 @@ WEBSHADOW_LLAMA_MODEL=~/models/model.gguf \
   bin/webshadow bench answer benchmarks/geektime-enso-funding --tree path/to/shadow --reader local-llama
 ```
 
-Each repetition writes a record, with the answer, the per-field score, token
+Pass a tree from `bench generate` and the record names its generator; a
+tree edited since generation is refused. Each repetition writes a record, with the answer, the per-field score, token
 usage and the full transcript, to
 `runs/<run id>/cases/<scenario>/<generator>/<reader>/repetition-NN.json`.
 Its status is `success`, `wrong_answer`, `invalid_output`, `step_limit`,
