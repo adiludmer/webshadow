@@ -1,5 +1,5 @@
 // Package generator runs the generate stage: an agent that reads a
-// sanitized HAR through paged tools and writes a shadow tree of Markdown
+// sanitized proxy capture through paged tools and writes a shadow tree of Markdown
 // files. It never sees the scenario's goal, so it has to capture whatever
 // the session revealed.
 package generator
@@ -16,7 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/adiludmer/webshadow/internal/benchmark/agent"
-	"github.com/adiludmer/webshadow/internal/benchmark/har"
+	"github.com/adiludmer/webshadow/internal/benchmark/capture"
 	"github.com/adiludmer/webshadow/internal/benchmark/model"
 	"github.com/adiludmer/webshadow/internal/benchmark/reader"
 	"github.com/adiludmer/webshadow/internal/benchmark/scenario"
@@ -24,21 +24,22 @@ import (
 )
 
 // PromptVersion names the instructions below; records carry it.
-const PromptVersion = "generator-v4"
+const PromptVersion = "generator-v5"
 
-const instructions = `You turn a recorded browsing session (a HAR file) into a shadow tree: a
+const instructions = `You turn a recorded browsing session (a proxy capture of every request and
+response) into a shadow tree: a
 folder of Markdown files that describes what the site showed and served.
 Later, another agent with no web access will answer questions about this
 site using only your files. You do not know what those questions will be,
 so capture the facts the session revealed: entities, names, numbers,
 prices, dates, statuses and links.
 
-Look at the requests with har_index and open the useful ones with
-har_entry. Content often lives in API and JSON responses rather than in
+Look at the requests with capture_index and open the useful ones with
+capture_entry. Content often lives in API and JSON responses rather than in
 HTML pages, so open those too. Write readable Markdown, not raw dumps.
 Keep each write short; split large content across several files.
 
-Write only facts you read in har_entry output, and open a response before
+Write only facts you read in capture_entry output, and open a response before
 writing about it. Never invent placeholder names, dates, numbers or
 articles; a short tree of real facts is better than a long made-up one.
 
@@ -77,14 +78,14 @@ type Options struct {
 // Run generates a shadow tree for s into treeDir, which must not exist or
 // must be empty. On return the tree's files are read-only.
 func Run(ctx context.Context, m model.Model, s *scenario.Scenario, treeDir string, opts Options) (Result, error) {
-	f, err := os.Open(s.HARPath())
+	f, err := os.Open(s.CapturePath())
 	if err != nil {
 		return Result{}, err
 	}
-	trace, err := har.Parse(f)
+	trace, err := capture.Parse(f)
 	f.Close()
 	if err != nil {
-		return Result{}, fmt.Errorf("%s: %w", s.HAR, err)
+		return Result{}, fmt.Errorf("%s: %w", s.Capture, err)
 	}
 
 	if err := os.MkdirAll(treeDir, 0o755); err != nil {
@@ -101,7 +102,7 @@ func Run(ctx context.Context, m model.Model, s *scenario.Scenario, treeDir strin
 	}
 	defer root.Close()
 
-	tools := append(HARTools(trace), newWriteTool(root))
+	tools := append(CaptureTools(trace), newWriteTool(root))
 	for _, t := range reader.Tools(root.FS()) {
 		if t.Name() != "search" {
 			tools = append(tools, t) // list and read, to review the tree
@@ -133,12 +134,12 @@ func Run(ctx context.Context, m model.Model, s *scenario.Scenario, treeDir strin
 }
 
 // task describes the session so the agent knows where to start.
-func task(t *har.Trace) string {
+func task(t *capture.Trace) string {
 	hosts := map[string]int{}
 	for _, e := range t.Entries {
 		hosts[e.Host]++
 	}
-	rows, _, _ := indexRows(t.Select(har.Filter{}), false)
+	rows, _, _ := indexRows(t.Select(capture.Filter{}), false)
 	names := make([]string, 0, len(hosts))
 	for h := range hosts {
 		names = append(names, h)
@@ -153,19 +154,19 @@ func task(t *har.Trace) string {
 		names = names[:8]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "The session has %d requests. har_index lists %d of them by default: documents, API calls and unclassified requests "+
+	fmt.Fprintf(&b, "The session has %d requests. capture_index lists %d of them by default: documents, API calls and unclassified requests "+
 		"that have a body, with repeats folded. Busiest hosts: %s.", len(t.Entries), len(rows), strings.Join(names, ", "))
 	if big := largest(t, taskLargest); len(big) > 0 {
 		b.WriteString("\n\nThe largest responses, which usually hold the most content:")
 		for _, e := range big {
-			u := har.NormalizeURL(e.URL, har.DefaultVolatileKeys)
+			u := capture.NormalizeURL(e.URL, capture.DefaultVolatileKeys)
 			if len(u) > maxTaskURL {
 				u = u[:maxTaskURL] + "..."
 			}
 			fmt.Fprintf(&b, "\n- seq %d, %d bytes: %s", e.Sequence, len(e.ResponseBody), u)
 		}
 	}
-	b.WriteString("\n\nBuild the shadow tree. Start with har_index.")
+	b.WriteString("\n\nBuild the shadow tree. Start with capture_index.")
 	return b.String()
 }
 
@@ -175,10 +176,10 @@ const (
 )
 
 // largest returns the biggest text response of each endpoint among the
-// entries har_index lists by default, biggest first, at most n of them.
-func largest(t *har.Trace, n int) []har.Entry {
-	rows, _, _ := indexRows(t.Select(har.Filter{}), false)
-	var all []har.Entry
+// entries capture_index lists by default, biggest first, at most n of them.
+func largest(t *capture.Trace, n int) []capture.Entry {
+	rows, _, _ := indexRows(t.Select(capture.Filter{}), false)
+	var all []capture.Entry
 	for _, r := range rows {
 		if len(r.entry.ResponseBody) > 0 && utf8.Valid(r.entry.ResponseBody) {
 			all = append(all, r.entry)
@@ -188,7 +189,7 @@ func largest(t *har.Trace, n int) []har.Entry {
 	// One per endpoint, so a widget polled with changing results, such as an
 	// ad feed, does not fill the list.
 	seen := map[string]bool{}
-	var out []har.Entry
+	var out []capture.Entry
 	for _, e := range all {
 		key := e.Method + " " + strings.ToLower(e.Host) + e.Path
 		if seen[key] {

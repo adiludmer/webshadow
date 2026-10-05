@@ -11,10 +11,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/adiludmer/webshadow/internal/benchmark/agent"
-	"github.com/adiludmer/webshadow/internal/benchmark/har"
+	"github.com/adiludmer/webshadow/internal/benchmark/capture"
 )
 
-// HAR tool limits.
+// Capture tool limits.
 const (
 	defaultIndexPage = 50
 	maxIndexPage     = 100
@@ -24,8 +24,8 @@ const (
 	maxRepeatSeqs    = 5
 )
 
-// HARTools returns the read-only tools over a parsed HAR.
-func HARTools(t *har.Trace) []agent.Tool {
+// CaptureTools returns the read-only tools over a parsed capture.
+func CaptureTools(t *capture.Trace) []agent.Tool {
 	return []agent.Tool{indexTool{t}, entryTool{t}}
 }
 
@@ -39,12 +39,12 @@ func decode(raw json.RawMessage, v any) error {
 	return nil
 }
 
-type indexTool struct{ trace *har.Trace }
+type indexTool struct{ trace *capture.Trace }
 
-func (indexTool) Name() string { return "har_index" }
+func (indexTool) Name() string { return "capture_index" }
 func (indexTool) Usage() string {
 	return fmt.Sprintf(`List the session's requests, one line each: seq, method, status, class, response body size, URL. `+
-		`Requests with no captured body are hidden, and repeats of the same URL with the same body are folded into one line. `+
+		`Requests with no body are hidden, and repeats of the same URL with the same body are folded into one line. `+
 		`args: {"page": number (default 1), "page_size": number (default %d, max %d), `+
 		`"classes": list of document|api|script|stylesheet|media|font|telemetry|unknown or ["all"] (default document, api, unknown), "host": substring, `+
 		`"include_empty": bool (default false)}`,
@@ -62,12 +62,12 @@ func (t indexTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	if err := decode(raw, &args); err != nil {
 		return "", err
 	}
-	f := har.Filter{Host: args.Host}
+	f := capture.Filter{Host: args.Host}
 	if slices.Contains(args.Classes, "all") {
-		f.Classes = har.Classes
+		f.Classes = capture.Classes
 	} else {
 		for _, name := range args.Classes {
-			c, ok := har.ParseClass(strings.ToLower(strings.TrimSpace(name)))
+			c, ok := capture.ParseClass(strings.ToLower(strings.TrimSpace(name)))
 			if !ok {
 				return "", fmt.Errorf("unknown class %q", name)
 			}
@@ -94,7 +94,7 @@ func (t indexTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	end := min(start+size, len(rows))
 	classes := f.Classes
 	if len(classes) == 0 {
-		classes = har.DefaultIndexClasses
+		classes = capture.DefaultIndexClasses
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "requests %d-%d of %d (classes: %s", start+1, end, len(rows), joinClasses(classes))
@@ -107,7 +107,7 @@ func (t indexTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	b.WriteString(")\n")
 	for _, r := range rows[start:end] {
 		e := r.entry
-		u := har.NormalizeURL(e.URL, har.DefaultVolatileKeys)
+		u := capture.NormalizeURL(e.URL, capture.DefaultVolatileKeys)
 		if len(u) > maxIndexURL {
 			u = u[:maxIndexURL] + "..."
 		}
@@ -123,10 +123,10 @@ func (t indexTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	return strings.TrimRight(b.String(), "\n"), nil
 }
 
-// indexRow is one line of har_index: an entry and the later entries that
+// indexRow is one line of capture_index: an entry and the later entries that
 // repeat it.
 type indexRow struct {
-	entry   har.Entry
+	entry   capture.Entry
 	repeats []int
 }
 
@@ -136,7 +136,7 @@ type indexRow struct {
 // them. The query is left out of the comparison because sites often add a
 // cache-busting timestamp to it; with identical bodies the folded entries
 // show nothing new.
-func indexRows(entries []har.Entry, includeEmpty bool) (rows []indexRow, hidden, folded int) {
+func indexRows(entries []capture.Entry, includeEmpty bool) (rows []indexRow, hidden, folded int) {
 	seen := map[[sha256.Size]byte]int{}
 	for _, e := range entries {
 		redirect := e.Status >= 300 && e.Status < 400
@@ -173,7 +173,7 @@ func joinSeqs(seqs []int) string {
 	return strings.Join(parts, ", ")
 }
 
-func joinClasses(cs []har.Class) string {
+func joinClasses(cs []capture.Class) string {
 	s := make([]string, len(cs))
 	for i, c := range cs {
 		s[i] = string(c)
@@ -181,12 +181,12 @@ func joinClasses(cs []har.Class) string {
 	return strings.Join(s, ", ")
 }
 
-type entryTool struct{ trace *har.Trace }
+type entryTool struct{ trace *capture.Trace }
 
-func (entryTool) Name() string { return "har_entry" }
+func (entryTool) Name() string { return "capture_entry" }
 func (entryTool) Usage() string {
 	return fmt.Sprintf(`Show one request: URL, status, content types and a page of a body. `+
-		`args: {"seq": number from har_index, "part": "response" (default) or "request", "offset": byte offset into the body (default 0), "limit": bytes (default %d, max %d)}`,
+		`args: {"seq": number from capture_index, "part": "response" (default) or "request", "offset": byte offset into the body (default 0), "limit": bytes (default %d, max %d)}`,
 		defaultBodyPage, maxBodyPage)
 }
 
@@ -225,8 +225,8 @@ func (t entryTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	}
 	fmt.Fprintf(&b, "%s body: %s, %d bytes\n", partName(args.Part), orNone(mime), len(body))
 	if len(body) == 0 {
-		if args.Part != "request" && e.ResponseSize > 0 {
-			fmt.Fprintf(&b, "the browser did not save this body (the HAR reports %d bytes); look for the same content in API responses", e.ResponseSize)
+		if args.Part != "request" && e.Status == 0 {
+			b.WriteString("the capture has no response for this request")
 			return b.String(), nil
 		}
 		return strings.TrimRight(b.String(), "\n"), nil

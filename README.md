@@ -1,10 +1,10 @@
 # webshadow
 Agent-friendly web generator
 
-## HAR benchmark
+## Capture benchmark
 
-`webshadow bench` measures how well an agent turns a recorded browser session
-(HAR) into a shadow that another agent can use to complete a task. See
+`webshadow bench` measures how well an agent turns a recorded browsing session
+(a Burp Suite proxy capture) into a shadow that another agent can use to complete a task. See
 [benchmarks/README.md](benchmarks/README.md) for the scenario format.
 
 ```
@@ -19,7 +19,7 @@ downloads the model if it is missing, generates a shadow tree and answers
 the goal from it.
 
 ```
-make bench                                        # qwen2.5-7b on the Enso scenario
+make bench                                        # qwen2.5-7b on the laptop search scenario
 make bench MODEL=llama3.1-8b SCENARIO=benchmarks/<dir>
 make bench GENERATOR=qwen2.5-7b READER=qwen2.5-3b REPETITIONS=3
 make bench-models                                 # model ids in models.yaml
@@ -35,15 +35,15 @@ under `runs/<RUN_ID>/`.
 ### Generating a shadow tree
 
 `bench generate` runs the generator stage: a model reads the scenario's
-sanitized HAR through paged `har_index` and `har_entry` tools and writes
+sanitized capture through paged `capture_index` and `capture_entry` tools and writes
 Markdown files with a sandboxed `write` tool. It never sees the goal.
-`har_index` hides requests with no captured body and folds repeats of the
+`capture_index` hides requests with no captured body and folds repeats of the
 same path with the same body into one line, so the model sees each piece of
 content once.
 
 ```
 WEBSHADOW_LLAMA_MODEL=~/models/model.gguf \
-  bin/webshadow bench generate benchmarks/geektime-enso-funding --generator local-llama
+  bin/webshadow bench generate benchmarks/geektime-burp-browse --generator local-llama
 ```
 
 The tree lands in `runs/<run id>/trees/<scenario>/<generator>/tree-NN/`,
@@ -62,7 +62,7 @@ tools, and finishes with a JSON answer that is scored against
 ```
 make llama
 WEBSHADOW_LLAMA_MODEL=~/models/model.gguf \
-  bin/webshadow bench answer benchmarks/geektime-enso-funding --tree path/to/shadow --reader local-llama
+  bin/webshadow bench answer benchmarks/synthetic-laptop-search --tree path/to/shadow --reader local-llama
 ```
 
 Pass a tree from `bench generate` and the record names its generator; a

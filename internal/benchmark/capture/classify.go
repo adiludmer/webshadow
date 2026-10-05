@@ -1,4 +1,4 @@
-package har
+package capture
 
 import (
 	"path"
@@ -61,32 +61,41 @@ var telemetryHosts = []string{
 var telemetryPaths = []string{"/collect", "/cdn-cgi/rum", "/beacon", "/pixel", "/track", "/recaptcha"}
 
 // Classify assigns a class from, in order: known telemetry hosts and
-// paths, Chrome's _resourceType, the response MIME type, and finally the
-// URL's file extension.
+// paths, the response MIME type, the URL's file extension, and the request's
+// Sec-Fetch-Dest header.
 func Classify(e *Entry) Class {
 	if isTelemetry(e) {
-		return ClassTelemetry
-	}
-	switch e.ResourceType {
-	case "document":
-		return ClassDocument
-	case "xhr", "fetch":
-		return ClassAPI
-	case "script":
-		return ClassScript
-	case "stylesheet":
-		return ClassStylesheet
-	case "image", "media":
-		return ClassMedia
-	case "font":
-		return ClassFont
-	case "ping", "beacon", "csp_violation_report":
 		return ClassTelemetry
 	}
 	if c := classifyMIME(e.ResponseMIME); c != ClassUnknown {
 		return c
 	}
-	return classifyExtension(e.Path)
+	if c := classifyExtension(e.Path); c != ClassUnknown {
+		return c
+	}
+	return classifyFetchDest(e.RequestHeader("Sec-Fetch-Dest"))
+}
+
+// classifyFetchDest maps the browser's Sec-Fetch-Dest request header, which
+// a proxy capture keeps, to a class.
+func classifyFetchDest(dest string) Class {
+	switch strings.ToLower(dest) {
+	case "document", "iframe":
+		return ClassDocument
+	case "empty":
+		return ClassAPI
+	case "script", "worker", "serviceworker", "sharedworker":
+		return ClassScript
+	case "style":
+		return ClassStylesheet
+	case "image", "video", "audio", "track":
+		return ClassMedia
+	case "font":
+		return ClassFont
+	case "report":
+		return ClassTelemetry
+	}
+	return ClassUnknown
 }
 
 func isTelemetry(e *Entry) bool {

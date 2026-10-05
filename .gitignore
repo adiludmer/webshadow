@@ -32,9 +32,9 @@ go.work.sum
 # .idea/
 # .vscode/
 
-# Benchmark run output and raw (unsanitized) HAR captures
+# Benchmark run output and raw (unsanitized) captures
 /runs/
-*.raw.har
+*.raw.xml
 
 # Build output
 /bin/

@@ -1,7 +1,7 @@
 # Benchmark scenarios
 
 Each subdirectory is one scenario. A run has two agents: a generator reads the
-scenario's sanitized HAR and writes a Markdown `shadow/` tree, then a reader
+scenario's sanitized Burp capture and writes a Markdown `shadow/` tree, then a reader
 gets only `goal.md` and that tree and returns a JSON answer, which is scored
 against `expected.json`.
 
@@ -10,7 +10,7 @@ against `expected.json`.
   scenario.yaml   benchmark mechanics only (no prompts or model settings)
   goal.md         the task, in natural language (never shown to the generator)
   expected.json   the structured answer the reader must return
-  session.har     sanitized HAR (never commit raw captures)
+  session.xml     sanitized Burp Suite XML export (never commit raw captures)
 ```
 
 ## scenario.yaml
@@ -21,7 +21,7 @@ name: Find the cheapest qualifying laptop
 version: 1
 tags: [ecommerce, search]
 
-har: session.har                 # these three default to the names shown
+capture: session.xml             # these three default to the names shown
 goal: goal.md
 expected: expected.json
 
@@ -54,35 +54,25 @@ and `unordered` (compare arrays as multisets).
 
 ## Adding a real capture
 
-### From Burp Suite
-
-Burp keeps every response body, including pages you navigated away from,
-which a DevTools HAR loses. In Proxy > HTTP history, show all MIME types,
-select the items, choose "Save items" and keep base64 encoding on. Then:
-
-```
-go run ./cmd/webshadow bench import-burp items.xml --out capture.raw.har
-```
-
-and sanitize `capture.raw.har` as below.
-
-### From Chrome DevTools
-
-Record the session in Chrome DevTools (Network tab, "Export HAR"), then
-sanitize it before it goes anywhere near the repo. Raw captures stay out of
-git (`*.raw.har` is ignored).
+Captures come from the Burp Suite proxy, which keeps the raw request and
+response of every item, including pages you navigated away from. Browse
+the site through Burp, then in Proxy > HTTP history show all MIME types,
+select the items, choose "Save items" and keep base64 encoding on. Sanitize
+the export before it goes anywhere near the repo. Raw captures stay out of
+git (`*.raw.xml` is ignored).
 
 ```
-go run ./cmd/webshadow bench sanitize capture.raw.har --out session.har \
-  --drop media,font,telemetry,stylesheet,script --trim-initiators
-go run ./cmd/webshadow bench inspect-har session.har --names
+go run ./cmd/webshadow bench sanitize capture.raw.xml --out session.xml \
+  --drop media,font,telemetry,stylesheet,script
+go run ./cmd/webshadow bench inspect session.xml --names
 ```
 
-`sanitize` redacts cookies, auth and CSRF headers, API keys, session and
-tracking IDs in URLs, form bodies and JSON bodies. `inspect-har --names` lists
-every header and parameter name that is left, so you can spot anything
-site-specific before committing. `validate` refuses a HAR that still carries
-cookies or auth headers.
+`sanitize` decodes chunked and gzip or deflate bodies, then redacts cookies,
+auth and CSRF headers, API keys, session and tracking IDs in URLs, form
+bodies and JSON bodies. The output is still a Burp export, so Burp can load
+it again. `inspect --names` lists every header and parameter name that is
+left, so you can spot anything site-specific before committing. `validate`
+refuses a capture that still carries cookies or auth headers.
 
 Check the suite with:
 

@@ -13,7 +13,7 @@ import (
 
 func ensoScenario(t *testing.T) *scenario.Scenario {
 	t.Helper()
-	s, err := scenario.Load(filepath.Join("..", "..", "..", "benchmarks", "geektime-enso-funding"))
+	s, err := scenario.Load(filepath.Join("..", "testdata", "enso"))
 	if err != nil {
 		t.Fatal(err)
 	}

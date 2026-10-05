@@ -1,0 +1,170 @@
+<?xml version="1.0"?>
+<!DOCTYPE items [
+<!ELEMENT items (item*)>
+<!ATTLIST items burpVersion CDATA "">
+<!ATTLIST items exportTime CDATA "">
+<!ELEMENT item (time, url, host, port, protocol, method, path, extension, request, status, responselength, mimetype, response, comment)>
+<!ELEMENT time (#PCDATA)>
+<!ELEMENT url (#PCDATA)>
+<!ELEMENT host (#PCDATA)>
+<!ATTLIST host ip CDATA "">
+<!ELEMENT port (#PCDATA)>
+<!ELEMENT protocol (#PCDATA)>
+<!ELEMENT method (#PCDATA)>
+<!ELEMENT path (#PCDATA)>
+<!ELEMENT extension (#PCDATA)>
+<!ELEMENT request (#PCDATA)>
+<!ATTLIST request base64 (true|false) "false">
+<!ELEMENT status (#PCDATA)>
+<!ELEMENT responselength (#PCDATA)>
+<!ELEMENT mimetype (#PCDATA)>
+<!ELEMENT response (#PCDATA)>
+<!ATTLIST response base64 (true|false) "false">
+<!ELEMENT comment (#PCDATA)>
+]>
+<items burpVersion="2026.8" exportTime="Mon Oct 05 07:16:08 UTC 2026">
+  <item>
+    <time>Thu Oct 01 09:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.example.test/laptops]]></url>
+    <host ip="">shop.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/laptops]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9sYXB0b3BzIEhUVFAvMS4xDQpIb3N0OiBzaG9wLmV4YW1wbGUudGVzdA0KQWNjZXB0OiAqLyoNClNlYy1GZXRjaC1EZXN0OiBkb2N1bWVudA0KDQo=]]></request>
+    <status>200</status>
+    <responselength>224</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IHRleHQvaHRtbA0KDQo8IWRvY3R5cGUgaHRtbD48aHRtbD48aGVhZD48dGl0bGU+RXhhbXBsZSBTaG9wPC90aXRsZT48L2hlYWQ+PGJvZHk+PG5hdj48YSBocmVmPSIvbGFwdG9wcyI+TGFwdG9wczwvYT48L25hdj48ZGl2IGlkPSJhcHAiPjwvZGl2PjxzY3JpcHQgc3JjPSIvc3RhdGljL2FwcC5qcyI+PC9zY3JpcHQ+PC9ib2R5PjwvaHRtbD4=]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 09:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.example.test/static/app.js]]></url>
+    <host ip="">shop.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/static/app.js]]></path>
+    <extension>js</extension>
+    <request base64="true"><![CDATA[R0VUIC9zdGF0aWMvYXBwLmpzIEhUVFAvMS4xDQpIb3N0OiBzaG9wLmV4YW1wbGUudGVzdA0KQWNjZXB0OiAqLyoNClNlYy1GZXRjaC1EZXN0OiBzY3JpcHQNCg0K]]></request>
+    <status>200</status>
+    <responselength>76</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2phdmFzY3JpcHQNCg0KY29uc29sZS5sb2coJ2FwcCcpOw==]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 09:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.example.test/api/products?category=laptops&_=1727773200300]]></url>
+    <host ip="">shop.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/products?category=laptops&_=1727773200300]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvcHJvZHVjdHM/Y2F0ZWdvcnk9bGFwdG9wcyZfPTE3Mjc3NzMyMDAzMDAgSFRUUC8xLjENCkhvc3Q6IHNob3AuZXhhbXBsZS50ZXN0DQpBY2NlcHQ6ICovKg0KU2VjLUZldGNoLURlc3Q6IGVtcHR5DQoNCg==]]></request>
+    <status>200</status>
+    <responselength>452</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJjYXRlZ29yeSI6ICJsYXB0b3BzIiwgInRvdGFsIjogNSwgIml0ZW1zIjogW3siaWQiOiAiMTAxIiwgIm5hbWUiOiAiQWVybyAxNCBMaXRlIiwgInByaWNlIjogOTk5LCAiY3VycmVuY3kiOiAiVVNEIn0sIHsiaWQiOiAiMTIzIiwgIm5hbWUiOiAiQWVybyAxNCBQcm8iLCAicHJpY2UiOiAxMjk5LCAiY3VycmVuY3kiOiAiVVNEIn0sIHsiaWQiOiAiMTMwIiwgIm5hbWUiOiAiTmltYnVzIDE0IiwgInByaWNlIjogMTE5OSwgImN1cnJlbmN5IjogIlVTRCJ9LCB7ImlkIjogIjE0MiIsICJuYW1lIjogIkF0bGFzIDE1IiwgInByaWNlIjogMTA5OSwgImN1cnJlbmN5IjogIlVTRCJ9LCB7ImlkIjogIjE1MCIsICJuYW1lIjogIkFlcm8gMTQgTWF4IiwgInByaWNlIjogMTc5OSwgImN1cnJlbmN5IjogIlVTRCJ9XX0=]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 09:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.example.test/api/products/101]]></url>
+    <host ip="">shop.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/products/101]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvcHJvZHVjdHMvMTAxIEhUVFAvMS4xDQpIb3N0OiBzaG9wLmV4YW1wbGUudGVzdA0KQWNjZXB0OiAqLyoNClNlYy1GZXRjaC1EZXN0OiBlbXB0eQ0KDQo=]]></request>
+    <status>200</status>
+    <responselength>174</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJpZCI6ICIxMDEiLCAibmFtZSI6ICJBZXJvIDE0IExpdGUiLCAic2NyZWVuX2luY2hlcyI6IDE0LCAicmFtX2diIjogMTYsICJwcmljZSI6IDk5OSwgImN1cnJlbmN5IjogIlVTRCIsICJpbl9zdG9jayI6IHRydWV9]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 09:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.example.test/api/products/123]]></url>
+    <host ip="">shop.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/products/123]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvcHJvZHVjdHMvMTIzIEhUVFAvMS4xDQpIb3N0OiBzaG9wLmV4YW1wbGUudGVzdA0KQWNjZXB0OiAqLyoNClNlYy1GZXRjaC1EZXN0OiBlbXB0eQ0KDQo=]]></request>
+    <status>200</status>
+    <responselength>174</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJpZCI6ICIxMjMiLCAibmFtZSI6ICJBZXJvIDE0IFBybyIsICJzY3JlZW5faW5jaGVzIjogMTQsICJyYW1fZ2IiOiAzMiwgInByaWNlIjogMTI5OSwgImN1cnJlbmN5IjogIlVTRCIsICJpbl9zdG9jayI6IHRydWV9]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 09:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.example.test/api/products/130]]></url>
+    <host ip="">shop.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/products/130]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvcHJvZHVjdHMvMTMwIEhUVFAvMS4xDQpIb3N0OiBzaG9wLmV4YW1wbGUudGVzdA0KQWNjZXB0OiAqLyoNClNlYy1GZXRjaC1EZXN0OiBlbXB0eQ0KDQo=]]></request>
+    <status>200</status>
+    <responselength>173</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJpZCI6ICIxMzAiLCAibmFtZSI6ICJOaW1idXMgMTQiLCAic2NyZWVuX2luY2hlcyI6IDE0LCAicmFtX2diIjogMzIsICJwcmljZSI6IDExOTksICJjdXJyZW5jeSI6ICJVU0QiLCAiaW5fc3RvY2siOiBmYWxzZX0=]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 09:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.example.test/api/products/142]]></url>
+    <host ip="">shop.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/products/142]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvcHJvZHVjdHMvMTQyIEhUVFAvMS4xDQpIb3N0OiBzaG9wLmV4YW1wbGUudGVzdA0KQWNjZXB0OiAqLyoNClNlYy1GZXRjaC1EZXN0OiBlbXB0eQ0KDQo=]]></request>
+    <status>200</status>
+    <responselength>173</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJpZCI6ICIxNDIiLCAibmFtZSI6ICJBdGxhcyAxNSIsICJzY3JlZW5faW5jaGVzIjogMTUuNiwgInJhbV9nYiI6IDMyLCAicHJpY2UiOiAxMDk5LCAiY3VycmVuY3kiOiAiVVNEIiwgImluX3N0b2NrIjogdHJ1ZX0=]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 09:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.example.test/api/products/150]]></url>
+    <host ip="">shop.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/products/150]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvcHJvZHVjdHMvMTUwIEhUVFAvMS4xDQpIb3N0OiBzaG9wLmV4YW1wbGUudGVzdA0KQWNjZXB0OiAqLyoNClNlYy1GZXRjaC1EZXN0OiBlbXB0eQ0KDQo=]]></request>
+    <status>200</status>
+    <responselength>174</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJpZCI6ICIxNTAiLCAibmFtZSI6ICJBZXJvIDE0IE1heCIsICJzY3JlZW5faW5jaGVzIjogMTQsICJyYW1fZ2IiOiA2NCwgInByaWNlIjogMTc5OSwgImN1cnJlbmN5IjogIlVTRCIsICJpbl9zdG9jayI6IHRydWV9]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 09:00:01 UTC 2026</time>
+    <url><![CDATA[https://analytics.example.test/collect]]></url>
+    <host ip="">analytics.example.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[POST]]></method>
+    <path><![CDATA[/collect]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[UE9TVCAvY29sbGVjdCBIVFRQLzEuMQ0KSG9zdDogYW5hbHl0aWNzLmV4YW1wbGUudGVzdA0KQWNjZXB0OiAqLyoNClNlYy1GZXRjaC1EZXN0OiBlbXB0eQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQoNCnsiZXZlbnQiOiAidmlld19saXN0IiwgImxpc3QiOiAibGFwdG9wcyJ9]]></request>
+    <status>204</status>
+    <responselength>27</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjA0IE5vIENvbnRlbnQNCg0K]]></response>
+    <comment></comment>
+  </item>
+</items>

@@ -40,7 +40,7 @@ clean-llama:
 
 # --- Benchmark -------------------------------------------------------------
 #
-#   make bench                                   # qwen2.5-7b on the Enso scenario
+#   make bench                                   # qwen2.5-7b on the laptop search scenario
 #   make bench MODEL=llama3.1-8b SCENARIO=benchmarks/<dir>
 #   make bench GENERATOR=qwen2.5-7b READER=qwen2.5-3b
 #
@@ -51,7 +51,7 @@ clean-llama:
 MODEL       ?= qwen2.5-7b
 GENERATOR   ?= $(MODEL)
 READER      ?= $(MODEL)
-SCENARIO    ?= benchmarks/geektime-enso-funding
+SCENARIO    ?= benchmarks/synthetic-laptop-search
 REPETITIONS ?= 1
 MODELS      ?= models.yaml
 MODELS_DIR  ?= models

@@ -14,7 +14,7 @@ import (
 
 func ensoScenario(t *testing.T) *scenario.Scenario {
 	t.Helper()
-	s, err := scenario.Load(filepath.Join("..", "..", "..", "benchmarks", "geektime-enso-funding"))
+	s, err := scenario.Load(filepath.Join("..", "testdata", "enso"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,8 +22,8 @@ func ensoScenario(t *testing.T) *scenario.Scenario {
 }
 
 var script = []string{
-	`{"action": "har_index", "args": {}}`,
-	`{"action": "har_entry", "args": {"seq": 0}}`,
+	`{"action": "capture_index", "args": {}}`,
+	`{"action": "capture_entry", "args": {"seq": 0}}`,
 	`{"action": "write", "args": {"path": "index.md", "content": "# Geektime\n\n- [Enso](companies/enso.md)\n"}}`,
 	`{"action": "write", "args": {"path": "companies/enso.md", "content": "# Enso\n\nRaised $15M.\n"}}`,
 	`{"action": "list", "args": {"recursive": true}}`,
@@ -63,7 +63,7 @@ func TestRunWritesAndFreezesTree(t *testing.T) {
 			t.Fatalf("goal leaked into the generator's prompt: %q", msg.Content)
 		}
 	}
-	for _, tool := range []string{"har_index", "har_entry", "write", "list", "read"} {
+	for _, tool := range []string{"capture_index", "capture_entry", "write", "list", "read"} {
 		if !strings.Contains(sys, "- "+tool+":") {
 			t.Errorf("system prompt lacks tool %s", tool)
 		}
@@ -71,8 +71,8 @@ func TestRunWritesAndFreezesTree(t *testing.T) {
 	if strings.Contains(sys, "- search:") {
 		t.Error("generator got the reader's search tool")
 	}
-	if task := reqs[0].Messages[1].Content; !strings.Contains(task, "The session has 197 requests") || !strings.Contains(task, "www.geektime.co.il") ||
-		!strings.Contains(task, "The largest responses, which usually hold the most content:\n- seq 39, 90936 bytes: https://www.geektime.co.il/wp-content/uploads/hp.json\n") {
+	if task := reqs[0].Messages[1].Content; !strings.Contains(task, "The session has 12 requests") || !strings.Contains(task, "www.geektime.co.il") ||
+		!strings.Contains(task, "The largest responses, which usually hold the most content:\n- seq 8, 90936 bytes: https://www.geektime.co.il/wp-content/uploads/hp.json\n") {
 		t.Errorf("task: %q", task)
 	}
 }

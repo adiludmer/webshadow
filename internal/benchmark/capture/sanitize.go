@@ -1,7 +1,8 @@
-package har
+package capture
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // Redacted replaces every removed string value.
@@ -25,15 +27,11 @@ type SanitizeConfig struct {
 	ParamsContains     []string // parameter-name fragments
 	BodyFields         []string // JSON object keys, exact
 	BodyFieldsContains []string
-	// StripBodies drops response bodies of these classes (the HAR keeps the
-	// entry, headers and size). Use it to shrink captures to what agents read.
+	// StripBodies drops response bodies of these classes (the capture keeps
+	// the item and its headers). Use it to shrink captures to what agents read.
 	StripBodies []Class
-	// DropClasses removes entries of these classes from the HAR entirely.
+	// DropClasses removes items of these classes from the capture entirely.
 	DropClasses []Class
-	// TrimInitiators removes the call stacks Chrome records under
-	// _initiator, keeping its type and URL. Stacks are often a quarter of a
-	// trimmed capture and say nothing about the data a page received.
-	TrimInitiators bool
 }
 
 // DefaultSanitizeConfig removes credentials, session material and common
@@ -71,7 +69,6 @@ func DefaultSanitizeConfig() SanitizeConfig {
 type SanitizeReport struct {
 	Entries        int
 	Headers        int
-	Cookies        int
 	Params         int
 	BodyFields     int
 	StrippedBodies int
@@ -79,52 +76,36 @@ type SanitizeReport struct {
 }
 
 func (r SanitizeReport) String() string {
-	return fmt.Sprintf("%d entries kept, %d dropped: %d headers, %d cookies, %d params and %d body fields redacted; %d bodies stripped",
-		r.Entries, r.DroppedEntries, r.Headers, r.Cookies, r.Params, r.BodyFields, r.StrippedBodies)
+	return fmt.Sprintf("%d items kept, %d dropped: %d headers, %d params and %d body fields redacted; %d bodies stripped",
+		r.Entries, r.DroppedEntries, r.Headers, r.Params, r.BodyFields, r.StrippedBodies)
 }
 
-// Sanitize reads a HAR document, redacts it according to cfg and writes the
-// result as indented JSON. Fields the sanitizer does not know are kept.
+// Sanitize reads a Burp XML export, redacts it according to cfg and writes
+// it back as a Burp XML export. Response bodies are stored decoded, with
+// their transfer and content coding headers removed, so later stages and
+// reviewers read plain text.
 func Sanitize(r io.Reader, w io.Writer, cfg SanitizeConfig) (SanitizeReport, error) {
-	dec := json.NewDecoder(r)
-	dec.UseNumber()
-	var doc map[string]any
-	if err := dec.Decode(&doc); err != nil {
-		return SanitizeReport{}, fmt.Errorf("invalid JSON: %w", err)
+	exp, err := readExport(r)
+	if err != nil {
+		return SanitizeReport{}, err
 	}
-	log, ok := doc["log"].(map[string]any)
-	if !ok {
-		return SanitizeReport{}, fmt.Errorf("missing log object")
-	}
-	entries, _ := log["entries"].([]any)
-
 	s := sanitizer{cfg: cfg}
-	kept := make([]any, 0, len(entries))
-	for _, raw := range entries {
-		entry, ok := raw.(map[string]any)
-		if !ok {
-			continue
+	kept := make([]item, 0, len(exp.items))
+	for i, it := range exp.items {
+		e, err := convert(i, it)
+		if err != nil {
+			return s.report, fmt.Errorf("item %d: %w", i, err)
 		}
-		class := classifyRaw(entry)
-		if slices.Contains(cfg.DropClasses, class) {
+		if slices.Contains(cfg.DropClasses, e.Class) {
 			s.report.DroppedEntries++
 			continue
 		}
-		s.entry(entry, slices.Contains(cfg.StripBodies, class))
+		s.item(&it, &e, slices.Contains(cfg.StripBodies, e.Class))
 		s.report.Entries++
-		kept = append(kept, entry)
+		kept = append(kept, it)
 	}
-	if _, ok := log["entries"]; ok {
-		log["entries"] = kept
-	}
-
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(doc); err != nil {
-		return s.report, err
-	}
-	return s.report, nil
+	exp.items = kept
+	return s.report, exp.write(w)
 }
 
 type sanitizer struct {
@@ -132,130 +113,97 @@ type sanitizer struct {
 	report SanitizeReport
 }
 
-func (s *sanitizer) entry(e map[string]any, stripBody bool) {
-	if init, ok := e["_initiator"].(map[string]any); ok && s.cfg.TrimInitiators {
-		delete(init, "stack")
-	}
-	if req, ok := e["request"].(map[string]any); ok {
-		s.headers(req)
-		s.cookies(req)
-		if u, ok := req["url"].(string); ok {
-			req["url"] = s.url(u)
-		}
-		s.nameValues(req["queryString"])
-		if pd, ok := req["postData"].(map[string]any); ok {
-			s.nameValues(pd["params"])
-			if text, ok := pd["text"].(string); ok {
-				mime, _ := pd["mimeType"].(string)
-				pd["text"] = s.body(text, mime)
-			}
-		}
-	}
-	resp, ok := e["response"].(map[string]any)
-	if !ok {
-		return
-	}
-	s.headers(resp)
-	s.cookies(resp)
-	if loc, ok := resp["redirectURL"].(string); ok && loc != "" {
-		resp["redirectURL"] = s.url(loc)
-	}
-	content, ok := resp["content"].(map[string]any)
-	if !ok {
-		return
-	}
-	text, _ := content["text"].(string)
-	if text == "" {
-		return
-	}
-	if stripBody {
-		delete(content, "text")
-		delete(content, "encoding")
-		content["comment"] = "body removed by webshadow sanitize"
-		s.report.StrippedBodies++
-		return
-	}
-	if enc, _ := content["encoding"].(string); strings.EqualFold(enc, "base64") {
-		return // binary bodies are not redacted field by field
-	}
-	mime, _ := content["mimeType"].(string)
-	content["text"] = s.body(text, mime)
-}
+const strippedComment = "response body removed by webshadow sanitize"
 
-// classifyRaw classifies an undecoded HAR entry the same way Parse does.
-func classifyRaw(e map[string]any) Class {
-	var tmp Entry
-	if req, ok := e["request"].(map[string]any); ok {
-		if raw, ok := req["url"].(string); ok {
-			if u, err := url.Parse(raw); err == nil {
-				tmp.Host, tmp.Path = strings.ToLower(u.Host), u.EscapedPath()
-			}
-		}
-	}
-	tmp.ResourceType, _ = e["_resourceType"].(string)
-	if resp, ok := e["response"].(map[string]any); ok {
-		if content, ok := resp["content"].(map[string]any); ok {
-			tmp.ResponseMIME, _ = content["mimeType"].(string)
-		}
-	}
-	return Classify(&tmp)
-}
+func (s *sanitizer) item(it *item, e *Entry, stripBody bool) {
+	it.URL.Text = s.url(it.URL.Text)
+	it.Path.Text = s.url(it.Path.Text)
 
-func (s *sanitizer) headers(m map[string]any) {
-	list, _ := m["headers"].([]any)
-	for _, raw := range list {
-		h, ok := raw.(map[string]any)
-		if !ok {
-			continue
+	req := splitMessage(mustRaw(it.Request))
+	if method, target, ok := strings.Cut(req.start, " "); ok {
+		if target, proto, ok := strings.Cut(target, " "); ok {
+			req.start = method + " " + s.url(target) + " " + proto
 		}
-		name, _ := h["name"].(string)
-		value, _ := h["value"].(string)
+	}
+	s.headers(req.headers)
+	if len(req.body) > 0 {
+		req.body = []byte(s.body(string(req.body), e.RequestMIME))
+		setLength(req.headers, len(req.body))
+	}
+	it.Request = encode(req.bytes())
+
+	rawResp := mustRaw(it.Response)
+	if len(rawResp) == 0 {
+		return
+	}
+	resp := splitMessage(rawResp)
+	s.headers(resp.headers)
+	if decodable(resp.headers) {
+		resp.body = e.ResponseBody
+		resp.headers = without(resp.headers, "Content-Encoding", "Transfer-Encoding")
 		switch {
-		case matches(name, s.cfg.Headers, s.cfg.HeadersContains):
-			if value != Redacted {
-				h["value"] = Redacted
+		case len(resp.body) == 0:
+		case stripBody:
+			resp.body = nil
+			it.Comment = strippedComment
+			s.report.StrippedBodies++
+		case utf8.Valid(resp.body):
+			resp.body = []byte(s.body(string(resp.body), e.ResponseMIME))
+		}
+		setLength(resp.headers, len(resp.body))
+	}
+	raw := resp.bytes()
+	it.Response = encode(raw)
+	it.ResponseLength = fmt.Sprint(len(raw))
+}
+
+// mustRaw decodes a message that convert has already decoded once.
+func mustRaw(m message) []byte {
+	raw, _ := m.raw()
+	return raw
+}
+
+func encode(raw []byte) message {
+	return message{Base64: true, Data: base64.StdEncoding.EncodeToString(raw)}
+}
+
+func without(hs []Header, names ...string) []Header {
+	out := hs[:0:0]
+	for _, h := range hs {
+		drop := false
+		for _, n := range names {
+			if strings.EqualFold(h.Name, n) {
+				drop = true
+			}
+		}
+		if !drop {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// setLength updates a Content-Length header, if there is one, after the
+// body changed.
+func setLength(hs []Header, n int) {
+	for i := range hs {
+		if strings.EqualFold(hs[i].Name, "Content-Length") {
+			hs[i].Value = fmt.Sprint(n)
+		}
+	}
+}
+
+func (s *sanitizer) headers(hs []Header) {
+	for i, h := range hs {
+		switch {
+		case matches(h.Name, s.cfg.Headers, s.cfg.HeadersContains):
+			if h.Value != Redacted {
+				hs[i].Value = Redacted
 				s.report.Headers++
 			}
-		case strings.EqualFold(name, "referer") || strings.EqualFold(name, "location") || name == ":path":
+		case strings.EqualFold(h.Name, "referer") || strings.EqualFold(h.Name, "location"):
 			// These carry URLs whose query strings need the same redaction.
-			h["value"] = s.url(value)
-		}
-	}
-}
-
-func (s *sanitizer) cookies(m map[string]any) {
-	if list, ok := m["cookies"].([]any); ok && len(list) > 0 {
-		s.report.Cookies += len(list)
-		m["cookies"] = []any{}
-	}
-}
-
-// nameValues redacts a HAR name/value list such as queryString.
-func (s *sanitizer) nameValues(v any) {
-	list, _ := v.([]any)
-	for _, raw := range list {
-		p, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		name, _ := p["name"].(string)
-		value, _ := p["value"].(string)
-		switch {
-		case matches(name, s.cfg.Params, s.cfg.ParamsContains):
-			if _, has := p["value"]; has {
-				p["value"] = Redacted
-			}
-		default:
-			if decoded, err := url.QueryUnescape(value); err == nil && looksLikeJSON(decoded) {
-				before := s.report.BodyFields
-				if clean := s.body(decoded, "application/json"); s.report.BodyFields > before {
-					if decoded == value {
-						p["value"] = clean
-					} else {
-						p["value"] = url.QueryEscape(clean)
-					}
-				}
-			}
+			hs[i].Value = s.url(h.Value)
 		}
 	}
 }
@@ -437,7 +385,7 @@ func matches(name string, exact, contains []string) bool {
 }
 
 // Unsanitized lists the credential material still present in a trace:
-// cookie arrays, and cookie and auth headers whose value is not the redaction placeholder.
+// cookie and auth headers whose value is not the redaction placeholder.
 // An empty result means the trace passes the benchmark's sanitization check.
 func Unsanitized(t *Trace) []string {
 	var found []string
@@ -446,15 +394,12 @@ func Unsanitized(t *Trace) []string {
 			switch strings.ToLower(h.Name) {
 			case "cookie", "set-cookie", "authorization", "proxy-authorization":
 				if h.Value != Redacted && h.Value != "" {
-					found = append(found, fmt.Sprintf("entry %d: %s header %s", seq, where, h.Name))
+					found = append(found, fmt.Sprintf("item %d: %s header %s", seq, where, h.Name))
 				}
 			}
 		}
 	}
 	for _, e := range t.Entries {
-		if e.Cookies > 0 {
-			found = append(found, fmt.Sprintf("entry %d: %d cookie(s)", e.Sequence, e.Cookies))
-		}
 		check(e.Sequence, "request", e.RequestHeaders)
 		check(e.Sequence, "response", e.ResponseHeaders)
 	}

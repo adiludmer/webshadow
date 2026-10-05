@@ -1,4 +1,4 @@
-package har
+package capture
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ type Filter struct {
 // data. Static assets and telemetry are listed only on request.
 var DefaultIndexClasses = []Class{ClassDocument, ClassAPI, ClassUnknown}
 
-// Select returns the entries that pass the filter, in HAR order.
+// Select returns the entries that pass the filter, in capture order.
 func (t *Trace) Select(f Filter) []Entry {
 	classes := f.Classes
 	if len(classes) == 0 {

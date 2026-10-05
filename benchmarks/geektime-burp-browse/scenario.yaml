@@ -7,7 +7,7 @@ tags:
   - real-capture
   - burp
 
-har: session.har
+capture: session.xml
 
 # No goal: this scenario only measures generation. bench answer refuses it.
 evaluation:

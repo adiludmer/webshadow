@@ -1,0 +1,186 @@
+<?xml version="1.0"?>
+<!DOCTYPE items [
+<!ELEMENT items (item*)>
+<!ATTLIST items burpVersion CDATA "">
+<!ATTLIST items exportTime CDATA "">
+<!ELEMENT item (time, url, host, port, protocol, method, path, extension, request, status, responselength, mimetype, response, comment)>
+<!ELEMENT time (#PCDATA)>
+<!ELEMENT url (#PCDATA)>
+<!ELEMENT host (#PCDATA)>
+<!ATTLIST host ip CDATA "">
+<!ELEMENT port (#PCDATA)>
+<!ELEMENT protocol (#PCDATA)>
+<!ELEMENT method (#PCDATA)>
+<!ELEMENT path (#PCDATA)>
+<!ELEMENT extension (#PCDATA)>
+<!ELEMENT request (#PCDATA)>
+<!ATTLIST request base64 (true|false) "false">
+<!ELEMENT status (#PCDATA)>
+<!ELEMENT responselength (#PCDATA)>
+<!ELEMENT mimetype (#PCDATA)>
+<!ELEMENT response (#PCDATA)>
+<!ATTLIST response base64 (true|false) "false">
+<!ELEMENT comment (#PCDATA)>
+]>
+<items burpVersion="2026.8" exportTime="Mon Oct 05 07:16:08 UTC 2026">
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC8gSFRUUC8xLjENCkhvc3Q6IHNob3AudGVzdA0KQ29va2llOiBzZXNzaW9uPWFiYzEyMzsgdGhlbWU9ZGFyaw0KVXNlci1BZ2VudDogdGVzdA0KU2VjLUZldGNoLURlc3Q6IGRvY3VtZW50DQoNCg==]]></request>
+    <status>200</status>
+    <responselength>128</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwDQpTZXQtQ29va2llOiBzZXNzaW9uPWFiYzEyMzsgSHR0cE9ubHkNCkNvbnRlbnQtVHlwZTogdGV4dC9odG1sDQoNCjxodG1sPjxib2R5PjxhIGhyZWY9Jy9wLzEnPkl0ZW08L2E+PC9ib2R5PjwvaHRtbD4=]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/api/items?tag=a&tag=b&_=1727776800000&access_token=tok-SECRET]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/items?tag=a&tag=b&_=1727776800000&access_token=tok-SECRET]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvaXRlbXM/dGFnPWEmdGFnPWImXz0xNzI3Nzc2ODAwMDAwJmFjY2Vzc190b2tlbj10b2stU0VDUkVUIEhUVFAvMS4xDQpIb3N0OiBzaG9wLnRlc3QNCkF1dGhvcml6YXRpb246IEJlYXJlciB0b2stU0VDUkVUDQpYLUNTUkYtVG9rZW46IGNzcmYtU0VDUkVUDQpTZWMtRmV0Y2gtRGVzdDogZW1wdHkNCg0K]]></request>
+    <status>200</status>
+    <responselength>129</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJpdGVtcyI6IFt7ImlkIjogMSwgInByaWNlIjogMTB9XSwgInVzZXIiOiB7ImVtYWlsIjogImFAYi50ZXN0IiwgIm5hbWUiOiAiQW5uIn19]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/login]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[POST]]></method>
+    <path><![CDATA[/login]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[UE9TVCAvbG9naW4gSFRUUC8xLjENCkhvc3Q6IHNob3AudGVzdA0KU2VjLUZldGNoLURlc3Q6IGRvY3VtZW50DQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL3gtd3d3LWZvcm0tdXJsZW5jb2RlZA0KDQp1c2VyPWFubiZwYXNzd29yZD1odW50ZXIyJnJlbWVtYmVyPTE=]]></request>
+    <status>302</status>
+    <responselength>53</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMzAyDQpMb2NhdGlvbjogaHR0cHM6Ly9zaG9wLnRlc3QvYWNjb3VudA0KDQo=]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/api/session]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[POST]]></method>
+    <path><![CDATA[/api/session]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[UE9TVCAvYXBpL3Nlc3Npb24gSFRUUC8xLjENCkhvc3Q6IHNob3AudGVzdA0KU2VjLUZldGNoLURlc3Q6IGVtcHR5DQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJ1c2VybmFtZSI6ICJhbm4iLCAicGFzc3dvcmQiOiAiaHVudGVyMiIsICJyZW1lbWJlciI6IHRydWV9]]></request>
+    <status>200</status>
+    <responselength>154</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJvayI6IHRydWUsICJ0b2tlbiI6ICJ0b2stU0VDUkVUIiwgImV4cGlyZXNfaW4iOiAzNjAwLCAicmVmcmVzaF90b2tlbiI6IHsidmFsdWUiOiAici1TRUNSRVQiLCAidHRsIjogOTl9fQ==]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/api/broken]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/broken]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvYnJva2VuIEhUVFAvMS4xDQpIb3N0OiBzaG9wLnRlc3QNClNlYy1GZXRjaC1EZXN0OiBlbXB0eQ0KDQo=]]></request>
+    <status>500</status>
+    <responselength>64</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgNTAwDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0KeyJlcnJvciI6ImJvb20ifQ==]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/api/empty]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/empty]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[R0VUIC9hcGkvZW1wdHkgSFRUUC8xLjENCkhvc3Q6IHNob3AudGVzdA0KU2VjLUZldGNoLURlc3Q6IGVtcHR5DQoNCg==]]></request>
+    <status>200</status>
+    <responselength>48</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCg0K]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/logo.png]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/logo.png]]></path>
+    <extension>png</extension>
+    <request base64="true"><![CDATA[R0VUIC9sb2dvLnBuZyBIVFRQLzEuMQ0KSG9zdDogc2hvcC50ZXN0DQpTZWMtRmV0Y2gtRGVzdDogaW1hZ2UNCg0K]]></request>
+    <status>200</status>
+    <responselength>58</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwDQpDb250ZW50LVR5cGU6IGltYWdlL3BuZw0KDQqJUE5HDQoaCmZha2VpbWFnZQ==]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://www.google-analytics.com/g/collect?v=2&cid=123.456&tid=G-XYZ]]></url>
+    <host ip="">www.google-analytics.com</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[POST]]></method>
+    <path><![CDATA[/g/collect?v=2&cid=123.456&tid=G-XYZ]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[UE9TVCAvZy9jb2xsZWN0P3Y9MiZjaWQ9MTIzLjQ1NiZ0aWQ9Ry1YWVogSFRUUC8xLjENCkhvc3Q6IHd3dy5nb29nbGUtYW5hbHl0aWNzLmNvbQ0KU2VjLUZldGNoLURlc3Q6IGVtcHR5DQoNCg==]]></request>
+    <status>204</status>
+    <responselength>42</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjA0DQpDb250ZW50LVR5cGU6IHRleHQvcGxhaW4NCg0K]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/static/app.js]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/static/app.js]]></path>
+    <extension>js</extension>
+    <request base64="true"><![CDATA[R0VUIC9zdGF0aWMvYXBwLmpzIEhUVFAvMS4xDQpIb3N0OiBzaG9wLnRlc3QNCg0K]]></request>
+    <status>200</status>
+    <responselength>68</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2phdmFzY3JpcHQNCg0KY29uc29sZS5sb2coMSk=]]></response>
+    <comment></comment>
+  </item>
+  <item>
+    <time>Thu Oct 01 10:00:00 UTC 2026</time>
+    <url><![CDATA[https://shop.test/fonts/a.woff2]]></url>
+    <host ip="">shop.test</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/fonts/a.woff2]]></path>
+    <extension>woff2</extension>
+    <request base64="true"><![CDATA[R0VUIC9mb250cy9hLndvZmYyIEhUVFAvMS4xDQpIb3N0OiBzaG9wLnRlc3QNCg0K]]></request>
+    <status>200</status>
+    <responselength>19</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwDQoNCgAAAA==]]></response>
+    <comment></comment>
+  </item>
+</items>
