@@ -43,7 +43,7 @@ type indexTool struct{ trace *capture.Trace }
 
 func (indexTool) Name() string { return "capture_index" }
 func (indexTool) Usage() string {
-	return fmt.Sprintf(`List the session's requests, one line each: seq, method, status, class, response body size, URL. `+
+	return fmt.Sprintf(`List the session's requests, one line each: seq, method, status, class, response size (readable text size for HTML pages), URL. `+
 		`Requests with no body are hidden, and repeats of the same URL with the same body are folded into one line. `+
 		`args: {"page": number (default 1), "page_size": number (default %d, max %d), `+
 		`"classes": list of document|api|script|stylesheet|media|font|telemetry|unknown or ["all"] (default document, api, unknown), "host": substring, `+
@@ -111,7 +111,7 @@ func (t indexTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 		if len(u) > maxIndexURL {
 			u = u[:maxIndexURL] + "..."
 		}
-		fmt.Fprintf(&b, "%d %s %d %s %d %s", e.Sequence, e.Method, e.Status, e.Class, len(e.ResponseBody), u)
+		fmt.Fprintf(&b, "%d %s %d %s %d %s", e.Sequence, e.Method, e.Status, e.Class, len(e.Readable()), u)
 		if n := len(r.repeats); n > 0 {
 			fmt.Fprintf(&b, " (x%d, also %s)", n+1, joinSeqs(r.repeats))
 		}
@@ -185,8 +185,8 @@ type entryTool struct{ trace *capture.Trace }
 
 func (entryTool) Name() string { return "capture_entry" }
 func (entryTool) Usage() string {
-	return fmt.Sprintf(`Show one request: URL, status, content types and a page of a body. `+
-		`args: {"seq": number from capture_index, "part": "response" (default) or "request", "offset": byte offset into the body (default 0), "limit": bytes (default %d, max %d)}`,
+	return fmt.Sprintf(`Show one request: URL, status, content types and a page of a body. HTML pages are shown as readable text with links. `+
+		`args: {"seq": number from capture_index, "part": "response" (default) or "request", "offset": byte offset into the body (default 0), "limit": bytes (default %d, max %d), "raw": bool, true shows HTML source (default false)}`,
 		defaultBodyPage, maxBodyPage)
 }
 
@@ -196,6 +196,7 @@ func (t entryTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 		Part   string `json:"part"`
 		Offset int    `json:"offset"`
 		Limit  int    `json:"limit"`
+		Raw    bool   `json:"raw"`
 	}{}
 	if err := decode(raw, &args); err != nil {
 		return "", err
@@ -212,9 +213,11 @@ func (t entryTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	fmt.Fprintf(&b, "%d %s %s\nstatus %d, class %s\n", e.Sequence, e.Method, e.URL, e.Status, e.Class)
 	var body []byte
 	var mime string
+	text := false
 	switch args.Part {
 	case "", "response":
 		body, mime = e.ResponseBody, e.ResponseMIME
+		text = e.ResponseText != "" && !args.Raw
 		if loc := e.ResponseHeader("Location"); loc != "" {
 			fmt.Fprintf(&b, "location: %s\n", loc)
 		}
@@ -223,7 +226,12 @@ func (t entryTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	default:
 		return "", fmt.Errorf("part must be response or request, not %q", args.Part)
 	}
-	fmt.Fprintf(&b, "%s body: %s, %d bytes\n", partName(args.Part), orNone(mime), len(body))
+	fmt.Fprintf(&b, "%s body: %s, %d bytes", partName(args.Part), orNone(mime), len(body))
+	if text {
+		body = []byte(e.ResponseText)
+		fmt.Fprintf(&b, ", shown as %d bytes of readable text (raw: true for the HTML)", len(body))
+	}
+	b.WriteByte('\n')
 	if len(body) == 0 {
 		if args.Part != "request" && e.Status == 0 {
 			b.WriteString("the capture has no response for this request")

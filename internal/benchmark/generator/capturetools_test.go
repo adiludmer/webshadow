@@ -168,3 +168,18 @@ func TestCaptureEntryKeepsRunesWhole(t *testing.T) {
 		t.Errorf("split a rune:\n%s", out)
 	}
 }
+
+func TestCaptureEntryShowsHTMLAsText(t *testing.T) {
+	trace := fixture(t)
+	out, err := runTool(t, trace, "capture_entry", `{"seq": 0}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "response body: text/html, 49 bytes, shown as 29 bytes of readable text") || !strings.HasSuffix(out, "[Item](https://shop.test/p/1)") {
+		t.Errorf("html entry:\n%s", out)
+	}
+	out, _ = runTool(t, trace, "capture_entry", `{"seq": 0, "raw": true}`)
+	if !strings.Contains(out, "<a href=") || strings.Contains(out, "readable text") {
+		t.Errorf("raw html entry:\n%s", out)
+	}
+}

@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Trace is the normalized view of a capture, one entry per item in file
@@ -55,8 +56,20 @@ type Entry struct {
 	// deflate content coding are undone. A body in a coding Go cannot
 	// decode, such as Brotli, is kept as recorded.
 	ResponseBody []byte
+	// ResponseText is an HTML response rendered as readable text by
+	// HTMLText; it is empty for every other response.
+	ResponseText string
 
 	StartedAt time.Time // zero when the item's time does not parse
+}
+
+// Readable returns what a reader should see of the response: the rendered
+// text of an HTML page, or the body itself.
+func (e *Entry) Readable() []byte {
+	if e.ResponseText != "" {
+		return []byte(e.ResponseText)
+	}
+	return e.ResponseBody
 }
 
 // RequestHeader returns the first request header with the given name,
@@ -271,6 +284,9 @@ func convert(seq int, it item) (Entry, error) {
 		e.StartedAt = ts
 	}
 	e.Class = Classify(&e)
+	if IsHTML(e.ResponseMIME) && utf8.Valid(e.ResponseBody) {
+		e.ResponseText = HTMLText(e.ResponseBody, rawURL)
+	}
 	return e, nil
 }
 

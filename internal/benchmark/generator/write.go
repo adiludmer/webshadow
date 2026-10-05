@@ -51,8 +51,13 @@ func (t *writeTool) Run(_ context.Context, raw json.RawMessage) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	if len(args.Content) > MaxFileBytes {
-		return "", fmt.Errorf("content is %d bytes; files are limited to %d", len(args.Content), MaxFileBytes)
+	return t.save(p, args.Content)
+}
+
+// save writes content to the checked path p within the tree limits.
+func (t *writeTool) save(p, content string) (string, error) {
+	if len(content) > MaxFileBytes {
+		return "", fmt.Errorf("content is %d bytes; files are limited to %d", len(content), MaxFileBytes)
 	}
 
 	t.mu.Lock()
@@ -61,7 +66,7 @@ func (t *writeTool) Run(_ context.Context, raw json.RawMessage) (string, error) 
 	if !exists && len(t.sizes) >= MaxFiles {
 		return "", fmt.Errorf("the tree already has %d files, the limit", MaxFiles)
 	}
-	total := len(args.Content) - prev
+	total := len(content) - prev
 	for _, n := range t.sizes {
 		total += n
 	}
@@ -78,19 +83,19 @@ func (t *writeTool) Run(_ context.Context, raw json.RawMessage) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	if _, err := f.WriteString(args.Content); err != nil {
+	if _, err := f.WriteString(content); err != nil {
 		f.Close()
 		return "", err
 	}
 	if err := f.Close(); err != nil {
 		return "", err
 	}
-	t.sizes[p] = len(args.Content)
+	t.sizes[p] = len(content)
 	verb := "wrote"
 	if exists {
 		verb = "replaced"
 	}
-	return fmt.Sprintf("%s %s (%d bytes); the tree has %d files", verb, p, len(args.Content), len(t.sizes)), nil
+	return fmt.Sprintf("%s %s (%d bytes); the tree has %d files", verb, p, len(content), len(t.sizes)), nil
 }
 
 // checkWritePath accepts relative paths ending in .md that stay inside

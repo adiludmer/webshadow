@@ -24,7 +24,7 @@ import (
 )
 
 // PromptVersion names the instructions below; records carry it.
-const PromptVersion = "generator-v5"
+const PromptVersion = "generator-v6"
 
 const instructions = `You turn a recorded browsing session (a proxy capture of every request and
 response) into a shadow tree: a
@@ -35,9 +35,14 @@ so capture the facts the session revealed: entities, names, numbers,
 prices, dates, statuses and links.
 
 Look at the requests with capture_index and open the useful ones with
-capture_entry. Content often lives in API and JSON responses rather than in
-HTML pages, so open those too. Write readable Markdown, not raw dumps.
-Keep each write short; split large content across several files.
+capture_entry, which shows HTML pages as readable text. Content also lives
+in API and JSON responses, so open those too.
+
+Keep the full content, not summaries. For an article, post or other page
+whose text matters, use save_entry to save its whole text into its own
+file, with a title and a short note on what it is. Use write for files you
+compose yourself, such as index.md and pages about entities, and keep each
+write short.
 
 Write only facts you read in capture_entry output, and open a response before
 writing about it. Never invent placeholder names, dates, numbers or
@@ -102,7 +107,8 @@ func Run(ctx context.Context, m model.Model, s *scenario.Scenario, treeDir strin
 	}
 	defer root.Close()
 
-	tools := append(CaptureTools(trace), newWriteTool(root))
+	w := newWriteTool(root)
+	tools := append(CaptureTools(trace), w, saveTool{trace: trace, w: w})
 	for _, t := range reader.Tools(root.FS()) {
 		if t.Name() != "search" {
 			tools = append(tools, t) // list and read, to review the tree
@@ -163,7 +169,7 @@ func task(t *capture.Trace) string {
 			if len(u) > maxTaskURL {
 				u = u[:maxTaskURL] + "..."
 			}
-			fmt.Fprintf(&b, "\n- seq %d, %d bytes: %s", e.Sequence, len(e.ResponseBody), u)
+			fmt.Fprintf(&b, "\n- seq %d, %d bytes: %s", e.Sequence, len(e.Readable()), u)
 		}
 	}
 	b.WriteString("\n\nBuild the shadow tree. Start with capture_index.")
@@ -185,7 +191,7 @@ func largest(t *capture.Trace, n int) []capture.Entry {
 			all = append(all, r.entry)
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return len(all[i].ResponseBody) > len(all[j].ResponseBody) })
+	sort.SliceStable(all, func(i, j int) bool { return len(all[i].Readable()) > len(all[j].Readable()) })
 	// One per endpoint, so a widget polled with changing results, such as an
 	// ad feed, does not fill the list.
 	seen := map[string]bool{}
