@@ -23,7 +23,7 @@ import (
 )
 
 // PromptVersion names the instructions below; records carry it.
-const PromptVersion = "generator-v2"
+const PromptVersion = "generator-v3"
 
 const instructions = `You turn a recorded browsing session (a HAR file) into a shadow tree: a
 folder of Markdown files that describes what the site showed and served.
@@ -41,8 +41,8 @@ writing about it. Never invent placeholder names, dates, numbers or
 articles; a short tree of real facts is better than a long made-up one.
 
 A suggested layout is index.md with an overview of the site that links to
-the other files, then one file per page or entity. Organize it however
-serves a reader best.
+the other files, then one file per page or entity. Write index.md last, so
+it links only to files that exist. Organize it however serves a reader best.
 
 When the tree covers what the session showed, finish with a one-line
 summary as the answer, for example

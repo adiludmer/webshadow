@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,6 +31,11 @@ type Tool interface {
 
 // FinishAction is the action name that ends a run.
 const FinishAction = "finish"
+
+// MaxRepeatedInvalid is how many identical invalid replies in a row end a
+// run. A model sampling at temperature 0 tends to repeat a malformed reply
+// verbatim, and further steps only burn time.
+const MaxRepeatedInvalid = 3
 
 // Outcome says how a run ended.
 type Outcome string
@@ -137,6 +143,8 @@ func Run(ctx context.Context, m model.Model, cfg Config) (res Result) {
 		{Role: model.RoleUser, Content: cfg.Task},
 	}
 	var observations []int // indexes of tool-result messages in msgs
+	var lastInvalid string // the previous reply, if it was not a valid action
+	repeats := 0           // consecutive identical invalid replies
 
 	for i := 1; i <= cfg.MaxSteps; i++ {
 		started := now()
@@ -160,6 +168,20 @@ func Run(ctx context.Context, m model.Model, cfg Config) (res Result) {
 			step.Error = perr.Error()
 			feedback = "Your reply was not a valid action: " + perr.Error() +
 				"\nReply with exactly one JSON object, for example {\"action\": \"finish\", \"answer\": {...}}."
+			if resp.Text == lastInvalid {
+				repeats++
+				feedback += "\nYou sent the same invalid reply again. Change it, or try a different action."
+			} else {
+				repeats = 1
+			}
+			lastInvalid = resp.Text
+			if repeats >= MaxRepeatedInvalid {
+				step.Duration = now().Sub(started)
+				res.Steps = append(res.Steps, step)
+				res.Outcome = Failed
+				res.Err = fmt.Errorf("the model sent the same invalid reply %d times in a row: %v", repeats, perr)
+				return res
+			}
 		case act.Action == FinishAction:
 			step.Action = act.Action
 			step.Duration = now().Sub(started)
@@ -167,6 +189,7 @@ func Run(ctx context.Context, m model.Model, cfg Config) (res Result) {
 			res.Outcome, res.Answer = Finished, act.Answer
 			return res
 		default:
+			lastInvalid, repeats = "", 0
 			step.Action, step.Args = act.Action, act.Args
 			tool, ok := tools[act.Action]
 			if !ok {
@@ -238,11 +261,13 @@ type Action struct {
 // ParseAction extracts the first JSON object from a reply. It tolerates
 // prose and code fences around the object, since small models add them.
 func ParseAction(reply string) (Action, error) {
+	var syntaxErr error // why the first object that looked like an action failed to parse
 	for start := strings.IndexByte(reply, '{'); start >= 0; {
 		dec := json.NewDecoder(strings.NewReader(reply[start:]))
 		dec.UseNumber()
 		var a Action
-		if err := dec.Decode(&a); err == nil {
+		err := dec.Decode(&a)
+		if err == nil {
 			if a.Action == "" {
 				return Action{}, errors.New(`the JSON object has no "action" field`)
 			}
@@ -251,14 +276,28 @@ func ParseAction(reply string) (Action, error) {
 			}
 			return a, nil
 		}
+		if syntaxErr == nil && looksLikeAction.MatchString(reply[start:]) {
+			syntaxErr = err
+			var se *json.SyntaxError
+			if errors.As(err, &se) {
+				syntaxErr = fmt.Errorf("%v at byte %d of the object", err, se.Offset)
+			}
+		}
 		next := strings.IndexByte(reply[start+1:], '{')
 		if next < 0 {
 			break
 		}
 		start += 1 + next
 	}
+	if syntaxErr != nil {
+		return Action{}, fmt.Errorf(`the JSON object is not valid (%v); inside strings, escape double quotes as \" and line breaks as \n`, syntaxErr)
+	}
 	return Action{}, errors.New("no JSON object found")
 }
+
+// looksLikeAction matches the start of an object meant as an action, so a
+// parse error in it is worth reporting.
+var looksLikeAction = regexp.MustCompile(`^\{\s*"action"\s*:`)
 
 func names(tools []Tool) []string {
 	out := make([]string, len(tools))
