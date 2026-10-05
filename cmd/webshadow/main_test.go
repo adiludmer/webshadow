@@ -20,7 +20,7 @@ func TestValidateCheckedInSuite(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
-	if !strings.Contains(out, "2 scenario(s) checked, 0 error(s), 0 warning(s)") {
+	if !strings.Contains(out, "3 scenario(s) checked, 0 error(s), 0 warning(s)") {
 		t.Fatalf("unexpected summary: %s", out)
 	}
 }

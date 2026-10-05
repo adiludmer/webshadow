@@ -75,8 +75,13 @@ bench_tree   = $(RUNS)/$(RUN_ID)/trees/$(scenario_id)/$(GENERATOR)/tree-01
 bench: llama $(bench_ggufs)
 	bin/webshadow bench generate $(SCENARIO) --generator $(GENERATOR) \
 		--models $(MODELS) --runs $(RUNS) --run-id $(RUN_ID)
-	bin/webshadow bench answer $(SCENARIO) --tree $(bench_tree) --reader $(READER) \
-		--models $(MODELS) --runs $(RUNS) --run-id $(RUN_ID) --repetitions $(REPETITIONS)
+	@if grep -Eq '^[[:space:]]+type:[[:space:]]*none[[:space:]]*$$' $(SCENARIO)/scenario.yaml; then \
+		echo "$(scenario_id) is generate-only; skipping the answer stage"; \
+	else \
+		echo bin/webshadow bench answer $(SCENARIO) --tree $(bench_tree) --reader $(READER) ...; \
+		bin/webshadow bench answer $(SCENARIO) --tree $(bench_tree) --reader $(READER) \
+			--models $(MODELS) --runs $(RUNS) --run-id $(RUN_ID) --repetitions $(REPETITIONS); \
+	fi
 
 # Downloads the GGUF for MODEL (or GENERATOR and READER) without running.
 bench-download: $(bench_ggufs)

@@ -105,6 +105,14 @@ func Validate(s *Scenario, opts Options) []Issue {
 	if path, ok := v.file("har", s.HAR); ok {
 		v.checkHAR(path)
 	}
+	if !s.Answerable() {
+		// A generate-only scenario has no goal or answer to check.
+		if len(s.Evaluation.RequiredFields) > 0 || len(s.Evaluation.Normalizers) > 0 || s.Evaluation.AllowExtraFields != nil {
+			v.errorf("evaluation: type %s takes no other settings", GenerateOnly)
+		}
+		v.checkStage("limits.generate", s.Limits.Generate)
+		return v.issues
+	}
 	if path, ok := v.file("goal", s.Goal); ok {
 		if data, err := os.ReadFile(path); err != nil {
 			v.errorf("goal: %v", err)
@@ -205,9 +213,9 @@ func (v *validator) checkEvaluation(e Evaluation, expected map[string]any, opts 
 	}
 	switch {
 	case e.Type == "":
-		v.errorf("evaluation.type is required (one of %s)", strings.Join(scorers, ", "))
+		v.errorf("evaluation.type is required (one of %s, or %s for a generate-only scenario)", strings.Join(scorers, ", "), GenerateOnly)
 	case !slices.Contains(scorers, e.Type):
-		v.errorf("evaluation.type %q is not a known scorer (one of %s)", e.Type, strings.Join(scorers, ", "))
+		v.errorf("evaluation.type %q is not a known scorer (one of %s, or %s for a generate-only scenario)", e.Type, strings.Join(scorers, ", "), GenerateOnly)
 	}
 
 	if len(e.RequiredFields) == 0 {

@@ -90,6 +90,13 @@ type StageLimits struct {
 	MaxTokens      int `yaml:"max_tokens"`
 }
 
+// GenerateOnly is the evaluation type of a scenario with no goal: it only
+// measures generation, and the reader stage does not run.
+const GenerateOnly = "none"
+
+// Answerable reports whether the scenario has a goal for the reader stage.
+func (s *Scenario) Answerable() bool { return s.Evaluation.Type != GenerateOnly }
+
 // AllowsExtraFields reports whether answers may carry fields beyond the
 // required ones. It defaults to true, as in the spec's example manifest.
 func (e Evaluation) AllowsExtraFields() bool {

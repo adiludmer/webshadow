@@ -1,0 +1,19 @@
+id: geektime-burp-browse
+name: Build a shadow of a Geektime browsing session captured with Burp
+version: 1
+tags:
+  - news
+  - hebrew
+  - real-capture
+  - burp
+
+har: session.har
+
+# No goal: this scenario only measures generation. bench answer refuses it.
+evaluation:
+  type: none
+
+limits:
+  generate:
+    max_steps: 200
+    timeout_seconds: 900

@@ -12,6 +12,8 @@ const benchUsage = `usage: webshadow bench <command> [arguments]
 
 Commands:
   validate <path>...      check scenario directories or suites before running them
+  import-burp <xml> --out f
+                          convert a Burp Suite XML export to an (unsanitized) HAR
   sanitize <har> --out f  write a copy of a HAR with credentials and personal data removed
   inspect-har <har>       show what the benchmark extracts from a HAR
   generate <scenario> --generator <model>
@@ -28,6 +30,8 @@ func runBench(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "validate":
 		return benchValidate(args[1:], stdout, stderr)
+	case "import-burp":
+		return benchImportBurp(args[1:], stdout, stderr)
 	case "sanitize":
 		return benchSanitize(args[1:], stdout, stderr)
 	case "inspect-har":

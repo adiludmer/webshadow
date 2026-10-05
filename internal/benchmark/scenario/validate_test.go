@@ -215,3 +215,19 @@ func TestCheckedInSuiteIsValid(t *testing.T) {
 		t.Fatalf("checked-in suite has issues: %v", res.Issues)
 	}
 }
+
+func TestGenerateOnlyScenario(t *testing.T) {
+	manifest := "id: browse\nname: Browse only\nversion: 1\nevaluation:\n  type: none\n"
+	res := validate(t, writeScenario(t, map[string]string{"scenario.yaml": manifest, "goal.md": "", "expected.json": ""}))
+	if len(res.Issues) != 0 {
+		t.Fatalf("want no issues, got %v", res.Issues)
+	}
+	if res.Scenarios[0].Answerable() {
+		t.Error("generate-only scenario reports itself answerable")
+	}
+
+	res = validate(t, writeScenario(t, map[string]string{"scenario.yaml": manifest + "  required_fields: [price]\n"}))
+	if len(res.Issues) != 1 || !strings.Contains(res.Issues[0].Message, "type none takes no other settings") {
+		t.Fatalf("issues: %v", res.Issues)
+	}
+}

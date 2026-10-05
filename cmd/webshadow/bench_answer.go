@@ -57,6 +57,9 @@ func benchAnswer(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	s := res.Scenarios[0]
+	if !s.Answerable() {
+		return fail(fmt.Errorf("scenario %s is generate-only (evaluation type %s); there is no goal to answer", s.ID, scenario.GenerateOnly))
+	}
 
 	root, err := os.OpenRoot(*treeDir)
 	if err != nil {

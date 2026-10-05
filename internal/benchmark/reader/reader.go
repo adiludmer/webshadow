@@ -62,6 +62,9 @@ type Options struct {
 
 // Run answers s's goal from tree with m and scores the answer.
 func Run(ctx context.Context, m model.Model, s *scenario.Scenario, tree fs.FS, opts Options) (Result, error) {
+	if !s.Answerable() {
+		return Result{}, fmt.Errorf("scenario %s is generate-only; it has no goal to answer", s.ID)
+	}
 	goal, err := os.ReadFile(s.GoalPath())
 	if err != nil {
 		return Result{}, err

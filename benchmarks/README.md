@@ -43,11 +43,30 @@ limits:                          # defaults: generate 200 steps / 600 s,
     max_tokens: 0                # optional token budget, 0 = none
 ```
 
+A scenario with `evaluation: {type: none}` is generate-only: it needs no
+`goal.md` or `expected.json`, `bench generate` runs as usual and `bench
+answer` refuses it. Use it to watch the generator on a capture you have no
+question for yet.
+
 Normalizer options: `case` (`lower` or `upper`), `whitespace` (`trim` or
 `collapse`), `numeric_tolerance`, `date` (a Go time layout), `url`, `currency`
 and `unordered` (compare arrays as multisets).
 
 ## Adding a real capture
+
+### From Burp Suite
+
+Burp keeps every response body, including pages you navigated away from,
+which a DevTools HAR loses. In Proxy > HTTP history, show all MIME types,
+select the items, choose "Save items" and keep base64 encoding on. Then:
+
+```
+go run ./cmd/webshadow bench import-burp items.xml --out capture.raw.har
+```
+
+and sanitize `capture.raw.har` as below.
+
+### From Chrome DevTools
 
 Record the session in Chrome DevTools (Network tab, "Export HAR"), then
 sanitize it before it goes anywhere near the repo. Raw captures stay out of

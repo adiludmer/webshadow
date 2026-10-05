@@ -70,6 +70,56 @@ func benchSanitize(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// benchImportBurp converts a Burp Suite "Save items" XML export to a HAR.
+// The result still holds cookies and tokens, so it is meant to go straight
+// into bench sanitize.
+func benchImportBurp(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("import-burp", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	out := fs.String("out", "", "write the HAR here (required); name it *.raw.har so git ignores it")
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "usage: webshadow bench import-burp <items.xml> --out <capture.raw.har>")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(reorder(args)); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 || *out == "" {
+		fs.Usage()
+		return 2
+	}
+	in, err := os.Open(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	defer in.Close()
+	tmp := *out + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	report, err := har.ConvertBurp(in, f)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, *out)
+	}
+	if err != nil {
+		os.Remove(tmp)
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "wrote %s: %d entries", *out, report.Entries)
+	if report.Undecoded > 0 {
+		fmt.Fprintf(stdout, ", %d bodies left compressed (unsupported content encoding)", report.Undecoded)
+	}
+	fmt.Fprintln(stdout, "\nnot sanitized yet: run webshadow bench sanitize on it before storing it anywhere")
+	return 0
+}
+
 // benchInspectHAR prints what the benchmark extracts from a HAR file.
 func benchInspectHAR(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("inspect-har", flag.ContinueOnError)
