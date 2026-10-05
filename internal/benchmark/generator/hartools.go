@@ -2,6 +2,7 @@ package generator
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ const (
 	maxIndexURL      = 200
 	defaultBodyPage  = 4000
 	maxBodyPage      = 8000
+	maxRepeatSeqs    = 5
 )
 
 // HARTools returns the read-only tools over a parsed HAR.
@@ -42,17 +44,20 @@ type indexTool struct{ trace *har.Trace }
 func (indexTool) Name() string { return "har_index" }
 func (indexTool) Usage() string {
 	return fmt.Sprintf(`List the session's requests, one line each: seq, method, status, class, response body size, URL. `+
+		`Requests with no captured body are hidden, and repeats of the same URL with the same body are folded into one line. `+
 		`args: {"page": number (default 1), "page_size": number (default %d, max %d), `+
-		`"classes": list of document|api|script|stylesheet|media|font|telemetry|unknown or ["all"] (default document, api, unknown), "host": substring}`,
+		`"classes": list of document|api|script|stylesheet|media|font|telemetry|unknown or ["all"] (default document, api, unknown), "host": substring, `+
+		`"include_empty": bool (default false)}`,
 		defaultIndexPage, maxIndexPage)
 }
 
 func (t indexTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	var args struct {
-		Page     int      `json:"page"`
-		PageSize int      `json:"page_size"`
-		Classes  []string `json:"classes"`
-		Host     string   `json:"host"`
+		Page         int      `json:"page"`
+		PageSize     int      `json:"page_size"`
+		Classes      []string `json:"classes"`
+		Host         string   `json:"host"`
+		IncludeEmpty bool     `json:"include_empty"`
 	}
 	if err := decode(raw, &args); err != nil {
 		return "", err
@@ -69,7 +74,7 @@ func (t indexTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 			f.Classes = append(f.Classes, c)
 		}
 	}
-	entries := t.trace.Select(f)
+	rows, hidden, folded := indexRows(t.trace.Select(f), args.IncludeEmpty)
 	size := args.PageSize
 	if size <= 0 {
 		size = defaultIndexPage
@@ -77,30 +82,95 @@ func (t indexTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	size = min(size, maxIndexPage)
 	page := max(args.Page, 1)
 	start := (page - 1) * size
-	if len(entries) == 0 {
+	if len(rows) == 0 {
+		if hidden > 0 {
+			return fmt.Sprintf("no requests with a body match; %d without one are hidden (include_empty: true shows them)", hidden), nil
+		}
 		return "no requests match", nil
 	}
-	if start >= len(entries) {
-		return fmt.Sprintf("page %d is past the end: %d matching requests, %d pages", page, len(entries), (len(entries)+size-1)/size), nil
+	if start >= len(rows) {
+		return fmt.Sprintf("page %d is past the end: %d matching requests, %d pages", page, len(rows), (len(rows)+size-1)/size), nil
 	}
-	end := min(start+size, len(entries))
+	end := min(start+size, len(rows))
 	classes := f.Classes
 	if len(classes) == 0 {
 		classes = har.DefaultIndexClasses
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "requests %d-%d of %d (classes: %s)\n", start+1, end, len(entries), joinClasses(classes))
-	for _, e := range entries[start:end] {
+	fmt.Fprintf(&b, "requests %d-%d of %d (classes: %s", start+1, end, len(rows), joinClasses(classes))
+	if hidden > 0 {
+		fmt.Fprintf(&b, "; %d with no body hidden", hidden)
+	}
+	if folded > 0 {
+		fmt.Fprintf(&b, "; %d repeats folded", folded)
+	}
+	b.WriteString(")\n")
+	for _, r := range rows[start:end] {
+		e := r.entry
 		u := har.NormalizeURL(e.URL, har.DefaultVolatileKeys)
 		if len(u) > maxIndexURL {
 			u = u[:maxIndexURL] + "..."
 		}
-		fmt.Fprintf(&b, "%d %s %d %s %d %s\n", e.Sequence, e.Method, e.Status, e.Class, len(e.ResponseBody), u)
+		fmt.Fprintf(&b, "%d %s %d %s %d %s", e.Sequence, e.Method, e.Status, e.Class, len(e.ResponseBody), u)
+		if n := len(r.repeats); n > 0 {
+			fmt.Fprintf(&b, " (x%d, also %s)", n+1, joinSeqs(r.repeats))
+		}
+		b.WriteByte('\n')
 	}
-	if end < len(entries) {
+	if end < len(rows) {
 		fmt.Fprintf(&b, "[next: page %d]", page+1)
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+// indexRow is one line of har_index: an entry and the later entries that
+// repeat it.
+type indexRow struct {
+	entry   har.Entry
+	repeats []int
+}
+
+// indexRows drops entries with no request or response body, other than
+// redirects, unless includeEmpty is set, and folds entries with the same
+// method, host, path, request body and response body into the first of
+// them. The query is left out of the comparison because sites often add a
+// cache-busting timestamp to it; with identical bodies the folded entries
+// show nothing new.
+func indexRows(entries []har.Entry, includeEmpty bool) (rows []indexRow, hidden, folded int) {
+	seen := map[[sha256.Size]byte]int{}
+	for _, e := range entries {
+		redirect := e.Status >= 300 && e.Status < 400
+		if !includeEmpty && !redirect && len(e.ResponseBody) == 0 && len(e.RequestBody) == 0 {
+			hidden++
+			continue
+		}
+		h := sha256.New()
+		fmt.Fprintf(h, "%s %s %s\x00", e.Method, strings.ToLower(e.Host), e.Path)
+		h.Write(e.RequestBody)
+		h.Write([]byte{0})
+		h.Write(e.ResponseBody)
+		var key [sha256.Size]byte
+		h.Sum(key[:0])
+		if i, ok := seen[key]; ok {
+			rows[i].repeats = append(rows[i].repeats, e.Sequence)
+			folded++
+			continue
+		}
+		seen[key] = len(rows)
+		rows = append(rows, indexRow{entry: e})
+	}
+	return rows, hidden, folded
+}
+
+func joinSeqs(seqs []int) string {
+	parts := make([]string, 0, min(len(seqs), maxRepeatSeqs)+1)
+	for _, s := range seqs[:min(len(seqs), maxRepeatSeqs)] {
+		parts = append(parts, fmt.Sprint(s))
+	}
+	if len(seqs) > maxRepeatSeqs {
+		parts = append(parts, fmt.Sprintf("and %d more", len(seqs)-maxRepeatSeqs))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func joinClasses(cs []har.Class) string {
@@ -155,6 +225,10 @@ func (t entryTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	}
 	fmt.Fprintf(&b, "%s body: %s, %d bytes\n", partName(args.Part), orNone(mime), len(body))
 	if len(body) == 0 {
+		if args.Part != "request" && e.ResponseSize > 0 {
+			fmt.Fprintf(&b, "the browser did not save this body (the HAR reports %d bytes); look for the same content in API responses", e.ResponseSize)
+			return b.String(), nil
+		}
 		return strings.TrimRight(b.String(), "\n"), nil
 	}
 	if !utf8.Valid(body) {

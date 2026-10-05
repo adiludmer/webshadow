@@ -37,6 +37,9 @@ under `runs/<RUN_ID>/`.
 `bench generate` runs the generator stage: a model reads the scenario's
 sanitized HAR through paged `har_index` and `har_entry` tools and writes
 Markdown files with a sandboxed `write` tool. It never sees the goal.
+`har_index` hides requests with no captured body and folds repeats of the
+same path with the same body into one line, so the model sees each piece of
+content once.
 
 ```
 WEBSHADOW_LLAMA_MODEL=~/models/model.gguf \

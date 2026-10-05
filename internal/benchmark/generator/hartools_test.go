@@ -2,6 +2,8 @@ package generator
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +43,7 @@ func TestHARIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out, "requests 1-") || !strings.Contains(out, "(classes: document, api, unknown)") {
+	if !strings.HasPrefix(out, "requests 1-") || !strings.Contains(out, "(classes: document, api, unknown; 1 with no body hidden)") {
 		t.Errorf("header: %q", out)
 	}
 	for _, want := range []string{"0 GET 200 document", "1 GET 200 api 81 https://shop.test/api/items?access_token=tok-SECRET&tag=a&tag=b"} {
@@ -56,18 +58,26 @@ func TestHARIndex(t *testing.T) {
 	}
 
 	out, _ = runTool(t, trace, "har_index", `{"classes": ["all"]}`)
-	if !strings.HasPrefix(out, "requests 1-10 of 10") {
+	if !strings.HasPrefix(out, "requests 1-8 of 8") || !strings.Contains(out, "2 with no body hidden") {
 		t.Errorf("all classes: %q", out)
+	}
+	out, _ = runTool(t, trace, "har_index", `{"classes": ["all"], "include_empty": true}`)
+	if !strings.HasPrefix(out, "requests 1-10 of 10 (classes: document, api, script, stylesheet, media, font, telemetry, unknown)") {
+		t.Errorf("include_empty: %q", out)
 	}
 	out, _ = runTool(t, trace, "har_index", `{"classes": ["Media", "font"]}`)
 	if !strings.HasPrefix(out, "requests 1-2 of 2 (classes: media, font)") {
 		t.Errorf("chosen classes: %q", out)
 	}
 	out, _ = runTool(t, trace, "har_index", `{"classes": ["all"], "host": "google"}`)
-	if !strings.HasPrefix(out, "requests 1-1 of 1") {
+	if !strings.HasPrefix(out, "no requests with a body match; 1 without one are hidden") {
 		t.Errorf("host filter: %q", out)
 	}
-	out, _ = runTool(t, trace, "har_index", `{"classes": ["all"], "page_size": 4, "page": 2}`)
+	out, _ = runTool(t, trace, "har_index", `{"classes": ["all"], "host": "google", "include_empty": true}`)
+	if !strings.HasPrefix(out, "requests 1-1 of 1") {
+		t.Errorf("host filter with empty: %q", out)
+	}
+	out, _ = runTool(t, trace, "har_index", `{"classes": ["all"], "page_size": 4, "page": 2, "include_empty": true}`)
 	if !strings.HasPrefix(out, "requests 5-8 of 10") || !strings.HasSuffix(out, "[next: page 3]") {
 		t.Errorf("paging: %q", out)
 	}
@@ -77,6 +87,42 @@ func TestHARIndex(t *testing.T) {
 	}
 	if _, err := runTool(t, trace, "har_index", `{"classes": ["pictures"]}`); err == nil {
 		t.Error("unknown class accepted")
+	}
+}
+
+func TestHARIndexFoldsRepeats(t *testing.T) {
+	entry := func(seq int, method, rawURL, req, resp string, status int) har.Entry {
+		u, err := url.Parse(rawURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return har.Entry{Sequence: seq, Method: method, URL: rawURL, Host: u.Host, Path: u.Path, Status: status, Class: har.ClassAPI,
+			RequestBody: []byte(req), ResponseBody: []byte(resp), ResponseSize: int64(len(resp))}
+	}
+	trace := &har.Trace{Entries: []har.Entry{
+		entry(0, "GET", "https://a.test/hp.json?ver=1", "", `{"n":1}`, 200),
+		entry(1, "GET", "https://a.test/hp.json?ver=1", "", "", 200),
+		entry(2, "GET", "https://a.test/hp.json?ver=1", "", `{"n":1}`, 200),
+		entry(3, "GET", "https://a.test/hp.json?ver=1", "", `{"n":2}`, 200),
+		entry(4, "POST", "https://a.test/q", `{"q":"a"}`, `[]`, 200),
+		entry(5, "POST", "https://a.test/q", `{"q":"b"}`, `[]`, 200),
+		entry(6, "GET", "https://a.test/old", "", "", 301),
+	}}
+	for i := 7; i < 14; i++ {
+		trace.Entries = append(trace.Entries, entry(i, "GET", fmt.Sprintf("https://a.test/hp.json?ver=%d", i), "", `{"n":1}`, 200))
+	}
+	out, err := runTool(t, trace, "har_index", `{}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `requests 1-5 of 5 (classes: document, api, unknown; 1 with no body hidden; 8 repeats folded)
+0 GET 200 api 7 https://a.test/hp.json?ver=1 (x9, also 2, 7, 8, 9, 10, and 3 more)
+3 GET 200 api 7 https://a.test/hp.json?ver=1
+4 POST 200 api 2 https://a.test/q
+5 POST 200 api 2 https://a.test/q
+6 GET 301 api 0 https://a.test/old`
+	if out != want {
+		t.Errorf("index:\n%s\nwant:\n%s", out, want)
 	}
 }
 
