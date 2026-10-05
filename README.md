@@ -34,16 +34,21 @@ under `runs/<RUN_ID>/`.
 
 ### Generating a shadow tree
 
-`bench generate` runs the generator stage: a model reads the scenario's
-sanitized capture through paged `capture_index` and `capture_entry` tools and writes
-Markdown files with sandboxed `write` and `save_entry` tools. It never sees
-the goal. `capture_index` hides requests with no captured body and folds
-repeats of the same path with the same body into one line, so the model sees
-each piece of content once. HTML responses are shown as readable text (title,
-headings, paragraphs, lists, tables and links, from `<main>` when the page
-has one), and `save_entry` copies a response's full text into a tree file
-verbatim, so whole articles land in the shadow without the model retyping
-them.
+`bench generate` runs the generator stage. First, without a model, every
+HTML page in the scenario's capture is converted to a Markdown document
+(`internal/markdown`): headings, paragraphs, lists, tables, quotes, code and
+links, from `<main>` when the page has one. Each document starts with a YAML
+header holding its `url`, `title`, `description`, `captured` time, `tags`
+(the site's own: `article:tag`, meta keywords and tag links) and
+`keywords` (TF-IDF across the capture's pages, with Hebrew prefix folding).
+
+The model then decides only the layout. It lists the documents with
+`documents`, reads one with `document`, puts it at a path with `place`, and
+writes its own overview files, such as `index.md`, with `write`.
+`capture_index` and `capture_entry` show API and JSON responses, whose facts
+it writes into files. It never sees the goal. When it finishes, documents it
+did not place are filed under `pages/`, and links between captured pages
+are rewritten to relative tree paths.
 
 ```
 WEBSHADOW_LLAMA_MODEL=~/models/model.gguf \

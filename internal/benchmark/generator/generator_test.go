@@ -63,7 +63,7 @@ func TestRunWritesAndFreezesTree(t *testing.T) {
 			t.Fatalf("goal leaked into the generator's prompt: %q", msg.Content)
 		}
 	}
-	for _, tool := range []string{"capture_index", "capture_entry", "write", "list", "read"} {
+	for _, tool := range []string{"documents", "document", "place", "capture_index", "capture_entry", "write", "list", "read"} {
 		if !strings.Contains(sys, "- "+tool+":") {
 			t.Errorf("system prompt lacks tool %s", tool)
 		}
@@ -72,7 +72,8 @@ func TestRunWritesAndFreezesTree(t *testing.T) {
 		t.Error("generator got the reader's search tool")
 	}
 	if task := reqs[0].Messages[1].Content; !strings.Contains(task, "The session has 12 requests") || !strings.Contains(task, "www.geektime.co.il") ||
-		!strings.Contains(task, "The largest responses, which usually hold the most content:\n- seq 8, 90936 bytes: https://www.geektime.co.il/wp-content/uploads/hp.json\n") {
+		!strings.Contains(task, "no documents to place") ||
+		!strings.Contains(task, "Other responses with the most content, out of 7 that capture_index lists:\n- seq 8, 90936 bytes: https://www.geektime.co.il/wp-content/uploads/hp.json\n") {
 		t.Errorf("task: %q", task)
 	}
 }

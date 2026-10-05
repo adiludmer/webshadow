@@ -434,3 +434,24 @@ func TestClassifyThirdPartyNoise(t *testing.T) {
 		}
 	}
 }
+
+func TestParseConvertsHTMLResponses(t *testing.T) {
+	trace := parseFixture(t)
+	var pages, other int
+	for _, e := range trace.Entries {
+		if e.Page != nil {
+			pages++
+			if string(e.Readable()) != e.Page.Body {
+				t.Errorf("seq %d: Readable is not the page body", e.Sequence)
+			}
+		} else if len(e.ResponseBody) > 0 {
+			other++
+			if string(e.Readable()) != string(e.ResponseBody) {
+				t.Errorf("seq %d: Readable is not the body", e.Sequence)
+			}
+		}
+	}
+	if pages == 0 || other == 0 {
+		t.Errorf("fixture should have HTML and other responses: %d pages, %d other", pages, other)
+	}
+}

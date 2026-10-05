@@ -24,37 +24,38 @@ import (
 )
 
 // PromptVersion names the instructions below; records carry it.
-const PromptVersion = "generator-v6"
+const PromptVersion = "generator-v7"
 
-const instructions = `You turn a recorded browsing session (a proxy capture of every request and
-response) into a shadow tree: a
-folder of Markdown files that describes what the site showed and served.
-Later, another agent with no web access will answer questions about this
-site using only your files. You do not know what those questions will be,
-so capture the facts the session revealed: entities, names, numbers,
-prices, dates, statuses and links.
+const instructions = `You organize a recorded browsing session (a proxy capture of every request
+and response) into a shadow tree: a folder of Markdown files that another
+agent with no web access will use to answer questions about the site. You
+do not know what those questions will be.
 
-Look at the requests with capture_index and open the useful ones with
-capture_entry, which shows HTML pages as readable text. Content also lives
-in API and JSON responses, so open those too.
+Every HTML page in the capture is already converted to a Markdown document
+with a header listing its url, title, description, tags and keywords. You
+do not rewrite them; your job is the layout of the tree.
 
-Keep the full content, not summaries. For an article, post or other page
-whose text matters, use save_entry to save its whole text into its own
-file, with a title and a short note on what it is. Use write for files you
-compose yourself, such as index.md and pages about entities, and keep each
-write short.
+- See the documents with documents, and read one with document.
+- Put each document where a reader would look for it with place, grouping
+  related pages under folders and giving each file a short descriptive
+  name. Pages you do not place are filed under pages/ when you finish.
+- Use write for the files you compose: index.md with an overview of the
+  site that links to each section, and short overview pages for sections or
+  topics that link to their documents. Link to a page with its URL or its
+  tree path; page URLs are rewritten to tree paths when you finish.
+- Some content lives only in API and JSON responses, not in pages.
+  capture_index and capture_entry show those; write their facts into files.
 
-Write only facts you read in capture_entry output, and open a response before
-writing about it. Never invent placeholder names, dates, numbers or
-articles; a short tree of real facts is better than a long made-up one.
+Write only facts you read in tool output. Never invent names, dates,
+numbers or articles.
 
-A suggested layout is index.md with an overview of the site that links to
-the other files, then one file per page or entity. Write index.md last, so
-it links only to files that exist. Organize it however serves a reader best.
+A suggested layout is index.md at the root, then one folder per kind of
+page or topic. Write index.md last, so it links only to files that exist.
+Organize it however serves a reader best.
 
-When the tree covers what the session showed, finish with a one-line
-summary as the answer, for example
-{"action": "finish", "answer": "12 files covering the article feed and 3 company pages"}.`
+When the layout is done, finish with a one-line summary as the answer, for
+example
+{"action": "finish", "answer": "4 articles under articles/ by topic, home page and index.md"}.`
 
 // Status is the outcome of a generation.
 type Status string
@@ -69,10 +70,11 @@ const (
 
 // Result is one generation.
 type Result struct {
-	Status Status
-	Digest string
-	Stats  shadow.Stats
-	Agent  agent.Result
+	Status    Status
+	Digest    string
+	Stats     shadow.Stats
+	Documents DocumentStats
+	Agent     agent.Result
 }
 
 // Options tune a run beyond the scenario's limits.
@@ -108,7 +110,9 @@ func Run(ctx context.Context, m model.Model, s *scenario.Scenario, treeDir strin
 	defer root.Close()
 
 	w := newWriteTool(root)
-	tools := append(CaptureTools(trace), w, saveTool{trace: trace, w: w})
+	l := newLayout(buildDocs(trace), w)
+	tools := append(l.tools(), w)
+	tools = append(tools, CaptureTools(trace)...)
 	for _, t := range reader.Tools(root.FS()) {
 		if t.Name() != "search" {
 			tools = append(tools, t) // list and read, to review the tree
@@ -116,7 +120,7 @@ func Run(ctx context.Context, m model.Model, s *scenario.Scenario, treeDir strin
 	}
 	ar := agent.Run(ctx, m, agent.Config{
 		Instructions: instructions,
-		Task:         task(trace),
+		Task:         task(trace, l),
 		Tools:        tools,
 		MaxSteps:     s.Limits.Generate.MaxSteps,
 		Timeout:      time.Duration(s.Limits.Generate.TimeoutSeconds) * time.Second,
@@ -125,6 +129,9 @@ func Run(ctx context.Context, m model.Model, s *scenario.Scenario, treeDir strin
 	})
 
 	res := Result{Agent: ar}
+	if res.Documents, err = l.finish(); err != nil {
+		return res, err
+	}
 	res.Digest, res.Stats, err = shadow.Digest(root.FS())
 	if err != nil {
 		return res, err
@@ -139,8 +146,9 @@ func Run(ctx context.Context, m model.Model, s *scenario.Scenario, treeDir strin
 	return res, nil
 }
 
-// task describes the session so the agent knows where to start.
-func task(t *capture.Trace) string {
+// task describes the session so the agent knows where to start: the
+// documents to place, then the other responses with content.
+func task(t *capture.Trace, l *layout) string {
 	hosts := map[string]int{}
 	for _, e := range t.Entries {
 		hosts[e.Host]++
@@ -160,19 +168,29 @@ func task(t *capture.Trace) string {
 		names = names[:8]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "The session has %d requests. capture_index lists %d of them by default: documents, API calls and unclassified requests "+
-		"that have a body, with repeats folded. Busiest hosts: %s.", len(t.Entries), len(rows), strings.Join(names, ", "))
+	fmt.Fprintf(&b, "The session has %d requests to %s.", len(t.Entries), strings.Join(names, ", "))
+	if len(l.docs) == 0 {
+		b.WriteString(" None of them is an HTML page, so there are no documents to place.")
+	} else {
+		fmt.Fprintf(&b, " %d of them are HTML pages, converted into documents d1-d%d:\n", len(l.docs), len(l.docs))
+		for _, d := range l.docs[:min(len(l.docs), docsPageSize)] {
+			b.WriteString("\n" + l.line(d))
+		}
+		if len(l.docs) > docsPageSize {
+			b.WriteString("\n[more: documents page 2]")
+		}
+	}
 	if big := largest(t, taskLargest); len(big) > 0 {
-		b.WriteString("\n\nThe largest responses, which usually hold the most content:")
+		fmt.Fprintf(&b, "\n\nOther responses with the most content, out of %d that capture_index lists:", len(rows))
 		for _, e := range big {
 			u := capture.NormalizeURL(e.URL, capture.DefaultVolatileKeys)
 			if len(u) > maxTaskURL {
 				u = u[:maxTaskURL] + "..."
 			}
-			fmt.Fprintf(&b, "\n- seq %d, %d bytes: %s", e.Sequence, len(e.Readable()), u)
+			fmt.Fprintf(&b, "\n- seq %d, %d bytes: %s", e.Sequence, len(e.ResponseBody), u)
 		}
 	}
-	b.WriteString("\n\nBuild the shadow tree. Start with capture_index.")
+	b.WriteString("\n\nLay out the shadow tree.")
 	return b.String()
 }
 
@@ -183,15 +201,16 @@ const (
 
 // largest returns the biggest text response of each endpoint among the
 // entries capture_index lists by default, biggest first, at most n of them.
+// HTML responses are left out; they are the documents.
 func largest(t *capture.Trace, n int) []capture.Entry {
 	rows, _, _ := indexRows(t.Select(capture.Filter{}), false)
 	var all []capture.Entry
 	for _, r := range rows {
-		if len(r.entry.ResponseBody) > 0 && utf8.Valid(r.entry.ResponseBody) {
+		if r.entry.Page == nil && len(r.entry.ResponseBody) > 0 && utf8.Valid(r.entry.ResponseBody) {
 			all = append(all, r.entry)
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return len(all[i].Readable()) > len(all[j].Readable()) })
+	sort.SliceStable(all, func(i, j int) bool { return len(all[i].ResponseBody) > len(all[j].ResponseBody) })
 	// One per endpoint, so a widget polled with changing results, such as an
 	// ad feed, does not fill the list.
 	seen := map[string]bool{}

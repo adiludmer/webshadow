@@ -91,7 +91,20 @@ type Tree struct {
 	Bytes  int64  `json:"bytes"`
 	Error  string `json:"error,omitempty"`
 
+	// Documents counts the capture's HTML pages, converted to Markdown
+	// without a model, and how they were placed in the tree.
+	Documents *Documents `json:"documents,omitempty"`
+
 	Generation Stage `json:"generation"`
+}
+
+// Documents counts converted pages: placed by the generator, filed under
+// pages/ because it left them unplaced, or skipped at a tree limit.
+type Documents struct {
+	Total      int `json:"total"`
+	Placed     int `json:"placed"`
+	AutoPlaced int `json:"auto_placed"`
+	Skipped    int `json:"skipped,omitempty"`
 }
 
 // TreeDir is where a generated tree lives:

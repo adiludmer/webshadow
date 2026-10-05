@@ -81,7 +81,11 @@ func benchGenerate(args []string, stdout, stderr io.Writer) int {
 		Digest:           g.Digest,
 		Files:            g.Stats.Files,
 		Bytes:            g.Stats.Bytes,
-		Generation:       record.StageOf(g.Agent),
+		Documents: &record.Documents{
+			Total: g.Documents.Total, Placed: g.Documents.Placed,
+			AutoPlaced: g.Documents.AutoPlaced, Skipped: g.Documents.Skipped,
+		},
+		Generation: record.StageOf(g.Agent),
 	}
 	if g.Agent.Err != nil {
 		tree.Error = g.Agent.Err.Error()
@@ -89,7 +93,8 @@ func benchGenerate(args []string, stdout, stderr io.Writer) int {
 	if err := record.WriteTree(dir, tree); err != nil {
 		return fail(err)
 	}
-	fmt.Fprintf(stdout, "%s: %s after %d steps, %d files (%d bytes), %s\n  %s\n",
-		g.Status, g.Agent.Outcome, len(g.Agent.Steps), g.Stats.Files, g.Stats.Bytes, g.Digest, record.TreeManifestPath(dir))
+	fmt.Fprintf(stdout, "%s: %s after %d steps, %d files (%d bytes), %s\n  pages: %d placed by the generator, %d filed under pages/\n  %s\n",
+		g.Status, g.Agent.Outcome, len(g.Agent.Steps), g.Stats.Files, g.Stats.Bytes, g.Digest,
+		g.Documents.Placed, g.Documents.AutoPlaced, record.TreeManifestPath(dir))
 	return 0
 }

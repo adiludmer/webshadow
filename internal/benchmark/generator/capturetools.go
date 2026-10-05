@@ -217,7 +217,7 @@ func (t entryTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	switch args.Part {
 	case "", "response":
 		body, mime = e.ResponseBody, e.ResponseMIME
-		text = e.ResponseText != "" && !args.Raw
+		text = e.Page != nil && !args.Raw
 		if loc := e.ResponseHeader("Location"); loc != "" {
 			fmt.Fprintf(&b, "location: %s\n", loc)
 		}
@@ -228,7 +228,7 @@ func (t entryTool) Run(_ context.Context, raw json.RawMessage) (string, error) {
 	}
 	fmt.Fprintf(&b, "%s body: %s, %d bytes", partName(args.Part), orNone(mime), len(body))
 	if text {
-		body = []byte(e.ResponseText)
+		body = []byte(e.Page.Body)
 		fmt.Fprintf(&b, ", shown as %d bytes of readable text (raw: true for the HTML)", len(body))
 	}
 	b.WriteByte('\n')

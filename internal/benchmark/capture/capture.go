@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/adiludmer/webshadow/internal/markdown"
 )
 
 // Trace is the normalized view of a capture, one entry per item in file
@@ -56,18 +58,18 @@ type Entry struct {
 	// deflate content coding are undone. A body in a coding Go cannot
 	// decode, such as Brotli, is kept as recorded.
 	ResponseBody []byte
-	// ResponseText is an HTML response rendered as readable text by
-	// HTMLText; it is empty for every other response.
-	ResponseText string
+	// Page is an HTML response converted to Markdown; it is nil for every
+	// other response.
+	Page *markdown.Page
 
 	StartedAt time.Time // zero when the item's time does not parse
 }
 
-// Readable returns what a reader should see of the response: the rendered
-// text of an HTML page, or the body itself.
+// Readable returns what a reader should see of the response: the Markdown
+// of an HTML page, or the body itself.
 func (e *Entry) Readable() []byte {
-	if e.ResponseText != "" {
-		return []byte(e.ResponseText)
+	if e.Page != nil {
+		return []byte(e.Page.Body)
 	}
 	return e.ResponseBody
 }
@@ -284,8 +286,9 @@ func convert(seq int, it item) (Entry, error) {
 		e.StartedAt = ts
 	}
 	e.Class = Classify(&e)
-	if IsHTML(e.ResponseMIME) && utf8.Valid(e.ResponseBody) {
-		e.ResponseText = HTMLText(e.ResponseBody, rawURL)
+	if markdown.IsHTML(e.ResponseMIME) && len(e.ResponseBody) > 0 && utf8.Valid(e.ResponseBody) {
+		p := markdown.Convert(e.ResponseBody, rawURL)
+		e.Page = &p
 	}
 	return e, nil
 }

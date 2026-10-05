@@ -25,12 +25,13 @@ const (
 type writeTool struct {
 	root *os.Root
 
-	mu    sync.Mutex
-	sizes map[string]int // bytes per file written so far
+	mu     sync.Mutex
+	sizes  map[string]int    // bytes per file written so far
+	placed map[string]string // path to the id of the document placed there
 }
 
 func newWriteTool(root *os.Root) *writeTool {
-	return &writeTool{root: root, sizes: map[string]int{}}
+	return &writeTool{root: root, sizes: map[string]int{}, placed: map[string]string{}}
 }
 
 func (*writeTool) Name() string { return "write" }
@@ -51,17 +52,21 @@ func (t *writeTool) Run(_ context.Context, raw json.RawMessage) (string, error) 
 	if err != nil {
 		return "", err
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if id := t.placed[p]; id != "" {
+		return "", fmt.Errorf("%s holds document %s; write somewhere else or place %s at another path first", p, id, id)
+	}
+	if len(args.Content) > MaxFileBytes {
+		return "", fmt.Errorf("content is %d bytes; files are limited to %d", len(args.Content), MaxFileBytes)
+	}
 	return t.save(p, args.Content)
 }
 
-// save writes content to the checked path p within the tree limits.
+// save writes content to the checked path p within the file count and tree
+// size limits. The caller holds t.mu and checks the per-file limit, which
+// applies to what the model writes, not to converted documents.
 func (t *writeTool) save(p, content string) (string, error) {
-	if len(content) > MaxFileBytes {
-		return "", fmt.Errorf("content is %d bytes; files are limited to %d", len(content), MaxFileBytes)
-	}
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	prev, exists := t.sizes[p]
 	if !exists && len(t.sizes) >= MaxFiles {
 		return "", fmt.Errorf("the tree already has %d files, the limit", MaxFiles)
@@ -96,6 +101,19 @@ func (t *writeTool) save(p, content string) (string, error) {
 		verb = "replaced"
 	}
 	return fmt.Sprintf("%s %s (%d bytes); the tree has %d files", verb, p, len(content), len(t.sizes)), nil
+}
+
+// remove deletes the file at p, if the tree has one. The caller holds t.mu.
+func (t *writeTool) remove(p string) error {
+	if _, ok := t.sizes[p]; !ok {
+		return nil
+	}
+	if err := t.root.Remove(p); err != nil {
+		return err
+	}
+	delete(t.sizes, p)
+	delete(t.placed, p)
+	return nil
 }
 
 // checkWritePath accepts relative paths ending in .md that stay inside

@@ -14,7 +14,12 @@ import (
 
 func fixture(t *testing.T) *capture.Trace {
 	t.Helper()
-	f, err := os.Open(filepath.Join("..", "capture", "testdata", "fixture.xml"))
+	return loadTrace(t, filepath.Join("..", "capture", "testdata", "fixture.xml"))
+}
+
+func loadTrace(t *testing.T, path string) *capture.Trace {
+	t.Helper()
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}

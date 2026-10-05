@@ -184,7 +184,7 @@ func TestGenerateThenAnswer(t *testing.T) {
 		t.Errorf("generate output:\n%s", stdout)
 	}
 	manifest, err := os.ReadFile(tree + ".json")
-	if err != nil || !strings.Contains(string(manifest), `"generator_prompt": "generator-v6"`) || !strings.Contains(string(manifest), `"status": "generated"`) {
+	if err != nil || !strings.Contains(string(manifest), `"generator_prompt": "generator-v7"`) || !strings.Contains(string(manifest), `"status": "generated"`) {
 		t.Fatalf("manifest: %s, %v", manifest, err)
 	}
 	if code, _, stderr := runCLI("bench", "generate", scenarioDir, "--generator", "gen", "--models", models, "--runs", runs); code != 1 || !strings.Contains(stderr, "not empty") {
@@ -196,7 +196,7 @@ func TestGenerateThenAnswer(t *testing.T) {
 		t.Fatalf("answer exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	rec, err := os.ReadFile(filepath.Join(runs, "answers", "cases", "geektime-enso-funding", "gen", "reader", "repetition-01.json"))
-	if err != nil || !strings.Contains(string(rec), `"generator_model_id": "gen"`) || !strings.Contains(string(rec), `"generator_prompt": "generator-v6"`) {
+	if err != nil || !strings.Contains(string(rec), `"generator_model_id": "gen"`) || !strings.Contains(string(rec), `"generator_prompt": "generator-v7"`) {
 		t.Fatalf("answer record: %s, %v", rec, err)
 	}
 
