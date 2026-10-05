@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/adiludmer/webshadow/internal/benchmark/agent"
 	"github.com/adiludmer/webshadow/internal/benchmark/har"
@@ -23,7 +24,7 @@ import (
 )
 
 // PromptVersion names the instructions below; records carry it.
-const PromptVersion = "generator-v3"
+const PromptVersion = "generator-v4"
 
 const instructions = `You turn a recorded browsing session (a HAR file) into a shadow tree: a
 folder of Markdown files that describes what the site showed and served.
@@ -35,6 +36,7 @@ prices, dates, statuses and links.
 Look at the requests with har_index and open the useful ones with
 har_entry. Content often lives in API and JSON responses rather than in
 HTML pages, so open those too. Write readable Markdown, not raw dumps.
+Keep each write short; split large content across several files.
 
 Write only facts you read in har_entry output, and open a response before
 writing about it. Never invent placeholder names, dates, numbers or
@@ -136,7 +138,7 @@ func task(t *har.Trace) string {
 	for _, e := range t.Entries {
 		hosts[e.Host]++
 	}
-	shown := len(t.Select(har.Filter{}))
+	rows, _, _ := indexRows(t.Select(har.Filter{}), false)
 	names := make([]string, 0, len(hosts))
 	for h := range hosts {
 		names = append(names, h)
@@ -150,8 +152,54 @@ func task(t *har.Trace) string {
 	if len(names) > 8 {
 		names = names[:8]
 	}
-	return fmt.Sprintf("The session has %d requests; %d are documents, API calls or unclassified, which har_index lists by default. "+
-		"Busiest hosts: %s.\n\nBuild the shadow tree. Start with har_index.", len(t.Entries), shown, strings.Join(names, ", "))
+	var b strings.Builder
+	fmt.Fprintf(&b, "The session has %d requests. har_index lists %d of them by default: documents, API calls and unclassified requests "+
+		"that have a body, with repeats folded. Busiest hosts: %s.", len(t.Entries), len(rows), strings.Join(names, ", "))
+	if big := largest(t, taskLargest); len(big) > 0 {
+		b.WriteString("\n\nThe largest responses, which usually hold the most content:")
+		for _, e := range big {
+			u := har.NormalizeURL(e.URL, har.DefaultVolatileKeys)
+			if len(u) > maxTaskURL {
+				u = u[:maxTaskURL] + "..."
+			}
+			fmt.Fprintf(&b, "\n- seq %d, %d bytes: %s", e.Sequence, len(e.ResponseBody), u)
+		}
+	}
+	b.WriteString("\n\nBuild the shadow tree. Start with har_index.")
+	return b.String()
+}
+
+const (
+	taskLargest = 8   // responses the task message names
+	maxTaskURL  = 120 // URL length in the task message
+)
+
+// largest returns the biggest text response of each endpoint among the
+// entries har_index lists by default, biggest first, at most n of them.
+func largest(t *har.Trace, n int) []har.Entry {
+	rows, _, _ := indexRows(t.Select(har.Filter{}), false)
+	var all []har.Entry
+	for _, r := range rows {
+		if len(r.entry.ResponseBody) > 0 && utf8.Valid(r.entry.ResponseBody) {
+			all = append(all, r.entry)
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return len(all[i].ResponseBody) > len(all[j].ResponseBody) })
+	// One per endpoint, so a widget polled with changing results, such as an
+	// ad feed, does not fill the list.
+	seen := map[string]bool{}
+	var out []har.Entry
+	for _, e := range all {
+		key := e.Method + " " + strings.ToLower(e.Host) + e.Path
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if out = append(out, e); len(out) == n {
+			break
+		}
+	}
+	return out
 }
 
 // freeze makes every file in the tree read-only, so a tree that readers

@@ -164,10 +164,17 @@ func Run(ctx context.Context, m model.Model, cfg Config) (res Result) {
 		var feedback string
 		act, perr := ParseAction(resp.Text)
 		switch {
+		case perr != nil && resp.StopReason == model.StopLength:
+			step.Error = fmt.Sprintf("reply cut off at the output token limit (%d tokens): %v", resp.Usage.OutputTokens, perr)
+			feedback = fmt.Sprintf("Your reply was cut off after %d tokens, before the JSON object was complete, so nothing was done. "+
+				"Do less in one action: split long content into several smaller files.", resp.Usage.OutputTokens)
+			fallthrough
 		case perr != nil:
-			step.Error = perr.Error()
-			feedback = "Your reply was not a valid action: " + perr.Error() +
-				"\nReply with exactly one JSON object, for example {\"action\": \"finish\", \"answer\": {...}}."
+			if step.Error == "" {
+				step.Error = perr.Error()
+				feedback = "Your reply was not a valid action: " + perr.Error() +
+					"\nReply with exactly one JSON object, for example {\"action\": \"finish\", \"answer\": {...}}."
+			}
 			if resp.Text == lastInvalid {
 				repeats++
 				feedback += "\nYou sent the same invalid reply again. Change it, or try a different action."

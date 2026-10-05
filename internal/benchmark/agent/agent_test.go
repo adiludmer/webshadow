@@ -147,6 +147,30 @@ func TestRunStopsOnRepeatedInvalidReplies(t *testing.T) {
 	}
 }
 
+// cutModel replies with an unfinished action, as a model stopped by its
+// token budget does, then finishes.
+type cutModel struct{ calls int }
+
+func (*cutModel) ID() string   { return "cut" }
+func (*cutModel) Close() error { return nil }
+func (m *cutModel) Complete(context.Context, model.Request) (model.Response, error) {
+	m.calls++
+	if m.calls == 1 {
+		return model.Response{Text: `{"action": "echo", "args": {"text": "a very long`, StopReason: model.StopLength, Usage: model.Usage{OutputTokens: 2048}}, nil
+	}
+	return model.Response{Text: `{"action": "finish", "answer": 1}`, StopReason: "stop"}, nil
+}
+
+func TestRunExplainsCutOffReplies(t *testing.T) {
+	res := Run(context.Background(), &cutModel{}, config())
+	if res.Outcome != Finished || len(res.Steps) != 2 {
+		t.Fatalf("outcome %s after %d steps", res.Outcome, len(res.Steps))
+	}
+	if !strings.HasPrefix(res.Steps[0].Error, "reply cut off at the output token limit (2048 tokens)") {
+		t.Errorf("step error: %q", res.Steps[0].Error)
+	}
+}
+
 func TestRunLimits(t *testing.T) {
 	loop := `{"action": "echo", "args": {"text": "again"}}`
 
