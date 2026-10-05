@@ -38,3 +38,6 @@ go.work.sum
 
 # Build output
 /bin/
+
+# Downloaded GGUF models
+/models/

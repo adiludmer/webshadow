@@ -12,6 +12,26 @@ go run ./cmd/webshadow bench validate benchmarks/
 go test ./...
 ```
 
+### Running a benchmark with make
+
+`make bench` runs one scenario end to end: it builds the llama binary,
+downloads the model if it is missing, generates a shadow tree and answers
+the goal from it.
+
+```
+make bench                                        # qwen2.5-7b on the Enso scenario
+make bench MODEL=llama3.1-8b SCENARIO=benchmarks/<dir>
+make bench GENERATOR=qwen2.5-7b READER=qwen2.5-3b REPETITIONS=3
+make bench-models                                 # model ids in models.yaml
+make bench-download MODEL=qwen2.5-3b              # fetch a model without running
+```
+
+Models are stored as `models/<id>.gguf` (set `MODELS_DIR` to keep them
+elsewhere). `qwen2.5-7b`, `qwen2.5-3b` and `llama3.1-8b` download Q4_K_M
+GGUFs from Hugging Face; for another model, add an entry to `models.yaml`
+and put its file at `models/<id>.gguf`. The tree and the scored record land
+under `runs/<RUN_ID>/`.
+
 ### Generating a shadow tree
 
 `bench generate` runs the generator stage: a model reads the scenario's
