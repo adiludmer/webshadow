@@ -34,7 +34,7 @@ func TestValidateReportsErrors(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("want exit 1, got %d\n%s", code, out)
 	}
-	for _, want := range []string{"error: har: file session.har not found", "error: evaluation.type is required"} {
+	for _, want := range []string{"error: capture: file session.xml not found", "error: evaluation.type is required"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -53,14 +53,14 @@ func TestUsageErrors(t *testing.T) {
 }
 
 func TestSanitizeAndInspect(t *testing.T) {
-	fixture := filepath.Join("..", "..", "internal", "benchmark", "har", "testdata", "fixture.har")
-	out := filepath.Join(t.TempDir(), "clean.har")
+	fixture := filepath.Join("..", "..", "internal", "benchmark", "capture", "testdata", "fixture.xml")
+	out := filepath.Join(t.TempDir(), "clean.xml")
 
-	code, stdout, stderr := runCLI("bench", "sanitize", fixture, "--out", out, "--drop", "telemetry", "--strip-bodies", "media", "--trim-initiators")
+	code, stdout, stderr := runCLI("bench", "sanitize", fixture, "--out", out, "--drop", "telemetry", "--strip-bodies", "media")
 	if code != 0 {
 		t.Fatalf("sanitize exit %d: %s", code, stderr)
 	}
-	if !strings.Contains(stdout, "9 entries kept, 1 dropped") {
+	if !strings.Contains(stdout, "9 items kept, 1 dropped") {
 		t.Errorf("unexpected sanitize output: %s", stdout)
 	}
 	data, err := os.ReadFile(out)
@@ -71,20 +71,20 @@ func TestSanitizeAndInspect(t *testing.T) {
 		t.Error("sanitized output still holds a password")
 	}
 
-	code, stdout, _ = runCLI("bench", "inspect-har", "--names", out)
+	code, stdout, _ = runCLI("bench", "inspect", "--names", out)
 	if code != 0 || !strings.Contains(stdout, "9 entries") || !strings.Contains(stdout, "header names:") || strings.Contains(stdout, "not sanitized") {
-		t.Errorf("inspect-har on clean HAR: exit %d\n%s", code, stdout)
+		t.Errorf("inspect on clean capture: exit %d\n%s", code, stdout)
 	}
-	code, stdout, _ = runCLI("bench", "inspect-har", fixture, "--class", "all")
+	code, stdout, _ = runCLI("bench", "inspect", fixture, "--class", "all")
 	if code != 0 || !strings.Contains(stdout, "not sanitized") || !strings.Contains(stdout, "google-analytics.com") {
-		t.Errorf("inspect-har on raw fixture: exit %d\n%s", code, stdout)
+		t.Errorf("inspect on raw fixture: exit %d\n%s", code, stdout)
 	}
 
 	for _, args := range [][]string{
 		{"bench", "sanitize", fixture},
 		{"bench", "sanitize", fixture, "--out", out, "--drop", "pictures"},
-		{"bench", "inspect-har"},
-		{"bench", "inspect-har", fixture, "--class", "nope"},
+		{"bench", "inspect"},
+		{"bench", "inspect", fixture, "--class", "nope"},
 	} {
 		if code, _, _ := runCLI(args...); code != 2 {
 			t.Errorf("run(%q) = %d, want 2", args, code)
@@ -108,7 +108,7 @@ func TestAnswer(t *testing.T) {
 	now = func() time.Time { return time.Date(2026, 10, 4, 16, 0, 0, 0, time.UTC) }
 	defer func() { now = time.Now }()
 
-	scenarioDir := filepath.Join("..", "..", "benchmarks", "geektime-enso-funding")
+	scenarioDir := filepath.Join("..", "..", "internal", "benchmark", "testdata", "enso")
 	tree := filepath.Join("..", "..", "internal", "benchmark", "reader", "testdata", "enso-tree")
 	runs := filepath.Join(dir, "runs")
 	code, stdout, stderr := runCLI("bench", "answer", scenarioDir, "--tree", tree, "--reader", "scripted", "--models", models, "--runs", runs, "--repetitions", "2")
@@ -148,6 +148,73 @@ func TestAnswer(t *testing.T) {
 		full := append([]string{"bench", "answer", scenarioDir, "--tree", tree, "--reader", "scripted", "--models", models, "--runs", runs}, strings.Fields(args)...)
 		if code, _, stderr := runCLI(full...); code != 1 || !strings.Contains(stderr, want) {
 			t.Errorf("%s: exit %d, stderr %q", args, code, stderr)
+		}
+	}
+}
+
+func TestGenerateThenAnswer(t *testing.T) {
+	dir := t.TempDir()
+	models := filepath.Join(dir, "models.yaml")
+	if err := os.WriteFile(models, []byte(`models:
+  - id: gen
+    adapter: fake
+    replies:
+      - '{"action": "capture_index", "args": {}}'
+      - '{"action": "write", "args": {"path": "index.md", "content": "# Geektime\n\nEnso raised $15,000,000 (USD).\n"}}'
+      - '{"action": "finish", "answer": "1 file"}'
+  - id: reader
+    adapter: fake
+    replies:
+      - '{"action": "read", "args": {"path": "index.md"}}'
+      - '{"action": "finish", "answer": {"amount": 15000000, "currency": "USD"}}'
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now = func() time.Time { return time.Date(2026, 10, 4, 18, 0, 0, 0, time.UTC) }
+	defer func() { now = time.Now }()
+	scenarioDir := filepath.Join("..", "..", "internal", "benchmark", "testdata", "enso")
+	runs := filepath.Join(dir, "runs")
+
+	code, stdout, stderr := runCLI("bench", "generate", scenarioDir, "--generator", "gen", "--models", models, "--runs", runs)
+	if code != 0 {
+		t.Fatalf("generate exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	tree := filepath.Join(runs, "20261004T180000Z", "trees", "geektime-enso-funding", "gen", "tree-01")
+	if !strings.Contains(stdout, "generated: finished after 3 steps, 1 files") || !strings.Contains(stdout, tree+".json") {
+		t.Errorf("generate output:\n%s", stdout)
+	}
+	manifest, err := os.ReadFile(tree + ".json")
+	if err != nil || !strings.Contains(string(manifest), `"generator_prompt": "generator-v7"`) || !strings.Contains(string(manifest), `"status": "generated"`) {
+		t.Fatalf("manifest: %s, %v", manifest, err)
+	}
+	if code, _, stderr := runCLI("bench", "generate", scenarioDir, "--generator", "gen", "--models", models, "--runs", runs); code != 1 || !strings.Contains(stderr, "not empty") {
+		t.Errorf("regenerating into the same tree: exit %d, %s", code, stderr)
+	}
+
+	code, stdout, stderr = runCLI("bench", "answer", scenarioDir, "--tree", tree, "--reader", "reader", "--models", models, "--runs", runs, "--run-id", "answers")
+	if code != 0 || !strings.Contains(stdout, "from gen") || !strings.Contains(stdout, "repetition 1: success") {
+		t.Fatalf("answer exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	rec, err := os.ReadFile(filepath.Join(runs, "answers", "cases", "geektime-enso-funding", "gen", "reader", "repetition-01.json"))
+	if err != nil || !strings.Contains(string(rec), `"generator_model_id": "gen"`) || !strings.Contains(string(rec), `"generator_prompt": "generator-v7"`) {
+		t.Fatalf("answer record: %s, %v", rec, err)
+	}
+
+	// A tree edited after generation is refused.
+	page := filepath.Join(tree, "index.md")
+	os.Chmod(page, 0o644)
+	os.WriteFile(page, []byte("# edited\n"), 0o644)
+	if code, _, stderr := runCLI("bench", "answer", scenarioDir, "--tree", tree, "--reader", "reader", "--models", models, "--runs", runs); code != 1 || !strings.Contains(stderr, "changed since it was generated") {
+		t.Errorf("edited tree: exit %d, %s", code, stderr)
+	}
+
+	for _, args := range [][]string{
+		{"bench", "generate", scenarioDir},
+		{"bench", "generate", "--generator", "gen"},
+		{"bench", "generate", scenarioDir, "--generator", "gen", "--repetition", "0"},
+	} {
+		if code, _, _ := runCLI(args...); code != 2 {
+			t.Errorf("run(%q) = %d, want 2", args, code)
 		}
 	}
 }

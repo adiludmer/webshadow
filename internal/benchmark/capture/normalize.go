@@ -1,4 +1,4 @@
-package har
+package capture
 
 import (
 	"net/url"

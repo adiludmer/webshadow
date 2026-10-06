@@ -23,6 +23,7 @@ func TestParseAction(t *testing.T) {
 		{"no object", "I think the answer is 15 million.", "", "", "no JSON object"},
 		{"no action", `{"answer": 1}`, "", "", `no "action" field`},
 		{"finish without answer", `{"action": "finish"}`, "", "", `needs an "answer"`},
+		{"unescaped quote", `{"action": "write", "args": {"path": "a.md", "content": "<div class="x">"}}`, "", "", `not valid (invalid character 'x' after object key:value pair at byte 70 of the object); inside strings, escape double quotes`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,6 +130,44 @@ func TestRunFeedsBackErrors(t *testing.T) {
 		if res.Steps[i].Error != want {
 			t.Errorf("step %d error = %q, want %q", i+1, res.Steps[i].Error, want)
 		}
+	}
+}
+
+func TestRunStopsOnRepeatedInvalidReplies(t *testing.T) {
+	bad := `{"action": "echo", "args": {"text": "say "hi""}}`
+	m := model.NewFake("fake", bad, `not json`, bad, bad, bad, `{"action": "finish", "answer": 1}`)
+	res := Run(context.Background(), m, config())
+	if res.Outcome != Failed || len(res.Steps) != 5 || res.Err == nil || !strings.Contains(res.Err.Error(), "same invalid reply 3 times in a row") {
+		t.Fatalf("outcome %s after %d steps, err %v", res.Outcome, len(res.Steps), res.Err)
+	}
+	reqs := m.Requests()
+	last := reqs[len(reqs)-1].Messages
+	if !strings.Contains(last[len(last)-1].Content, "same invalid reply again") {
+		t.Errorf("repeat feedback: %q", last[len(last)-1].Content)
+	}
+}
+
+// cutModel replies with an unfinished action, as a model stopped by its
+// token budget does, then finishes.
+type cutModel struct{ calls int }
+
+func (*cutModel) ID() string   { return "cut" }
+func (*cutModel) Close() error { return nil }
+func (m *cutModel) Complete(context.Context, model.Request) (model.Response, error) {
+	m.calls++
+	if m.calls == 1 {
+		return model.Response{Text: `{"action": "echo", "args": {"text": "a very long`, StopReason: model.StopLength, Usage: model.Usage{OutputTokens: 2048}}, nil
+	}
+	return model.Response{Text: `{"action": "finish", "answer": 1}`, StopReason: "stop"}, nil
+}
+
+func TestRunExplainsCutOffReplies(t *testing.T) {
+	res := Run(context.Background(), &cutModel{}, config())
+	if res.Outcome != Finished || len(res.Steps) != 2 {
+		t.Fatalf("outcome %s after %d steps", res.Outcome, len(res.Steps))
+	}
+	if !strings.HasPrefix(res.Steps[0].Error, "reply cut off at the output token limit (2048 tokens)") {
+		t.Errorf("step error: %q", res.Steps[0].Error)
 	}
 }
 

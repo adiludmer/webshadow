@@ -1,5 +1,5 @@
 // Package shadow handles shadow trees: the directories of Markdown files a
-// generator writes from a HAR and a reader answers from.
+// generator writes from a capture and a reader answers from.
 package shadow
 
 import (

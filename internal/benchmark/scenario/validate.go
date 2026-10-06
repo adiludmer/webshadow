@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/adiludmer/webshadow/internal/benchmark/har"
+	"github.com/adiludmer/webshadow/internal/benchmark/capture"
 )
 
 // Severity tells whether an issue blocks a run.
@@ -102,8 +102,16 @@ func Validate(s *Scenario, opts Options) []Issue {
 		v.errorf("version must be 1 or greater")
 	}
 
-	if path, ok := v.file("har", s.HAR); ok {
-		v.checkHAR(path)
+	if path, ok := v.file("capture", s.Capture); ok {
+		v.checkCapture(path)
+	}
+	if !s.Answerable() {
+		// A generate-only scenario has no goal or answer to check.
+		if len(s.Evaluation.RequiredFields) > 0 || len(s.Evaluation.Normalizers) > 0 || s.Evaluation.AllowExtraFields != nil {
+			v.errorf("evaluation: type %s takes no other settings", GenerateOnly)
+		}
+		v.checkStage("limits.generate", s.Limits.Generate)
+		return v.issues
 	}
 	if path, ok := v.file("goal", s.Goal); ok {
 		if data, err := os.ReadFile(path); err != nil {
@@ -152,25 +160,25 @@ func (v *validator) file(key, name string) (string, bool) {
 	return path, true
 }
 
-// checkHAR parses the HAR and refuses it if credential material remains,
-// so the corpus only ever holds sanitized captures.
-func (v *validator) checkHAR(path string) {
+// checkCapture parses the capture and refuses it if credential material
+// remains, so the corpus only ever holds sanitized captures.
+func (v *validator) checkCapture(path string) {
 	f, err := os.Open(path)
 	if err != nil {
-		v.errorf("har: %v", err)
+		v.errorf("capture: %v", err)
 		return
 	}
 	defer f.Close()
-	trace, err := har.Parse(f)
+	trace, err := capture.Parse(f)
 	if err != nil {
-		v.errorf("har: %s: %v", filepath.Base(path), err)
+		v.errorf("capture: %s: %v", filepath.Base(path), err)
 		return
 	}
 	if len(trace.Entries) == 0 {
-		v.warnf("har: %s has no entries", filepath.Base(path))
+		v.warnf("capture: %s has no items", filepath.Base(path))
 	}
-	if found := har.Unsanitized(trace); len(found) > 0 {
-		v.errorf("har: %s is not sanitized (%s%s); run webshadow bench sanitize", filepath.Base(path), found[0], more(len(found)-1))
+	if found := capture.Unsanitized(trace); len(found) > 0 {
+		v.errorf("capture: %s is not sanitized (%s%s); run webshadow bench sanitize", filepath.Base(path), found[0], more(len(found)-1))
 	}
 }
 
@@ -205,9 +213,9 @@ func (v *validator) checkEvaluation(e Evaluation, expected map[string]any, opts 
 	}
 	switch {
 	case e.Type == "":
-		v.errorf("evaluation.type is required (one of %s)", strings.Join(scorers, ", "))
+		v.errorf("evaluation.type is required (one of %s, or %s for a generate-only scenario)", strings.Join(scorers, ", "), GenerateOnly)
 	case !slices.Contains(scorers, e.Type):
-		v.errorf("evaluation.type %q is not a known scorer (one of %s)", e.Type, strings.Join(scorers, ", "))
+		v.errorf("evaluation.type %q is not a known scorer (one of %s, or %s for a generate-only scenario)", e.Type, strings.Join(scorers, ", "), GenerateOnly)
 	}
 
 	if len(e.RequiredFields) == 0 {

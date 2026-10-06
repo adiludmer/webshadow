@@ -1,8 +1,11 @@
-package har
+package capture
 
 import (
 	"bytes"
+	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
 	"strings"
@@ -10,9 +13,45 @@ import (
 	"time"
 )
 
+// rawItem is one request/response pair for building a Burp export in tests.
+type rawItem struct {
+	url, method, request, response string
+}
+
+// burpXML builds a Burp XML export from raw HTTP messages.
+func burpXML(items ...rawItem) string {
+	var b strings.Builder
+	b.WriteString(exportHead + `<items burpVersion="2026.8" exportTime="Mon Oct 05 07:16:08 UTC 2026">` + "\n")
+	for _, it := range items {
+		status := ""
+		if f := strings.Fields(it.response); len(f) > 1 {
+			status = f[1]
+		}
+		fmt.Fprintf(&b, `  <item>
+    <time>Mon Oct 05 07:14:42 UTC 2026</time>
+    <url><![CDATA[%s]]></url>
+    <host ip="">x</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[%s]]></method>
+    <path><![CDATA[/]]></path>
+    <extension>null</extension>
+    <request base64="true"><![CDATA[%s]]></request>
+    <status>%s</status>
+    <responselength>%d</responselength>
+    <mimetype></mimetype>
+    <response base64="true"><![CDATA[%s]]></response>
+    <comment></comment>
+  </item>
+`, it.url, it.method, base64.StdEncoding.EncodeToString([]byte(it.request)), status, len(it.response), base64.StdEncoding.EncodeToString([]byte(it.response)))
+	}
+	b.WriteString("</items>\n")
+	return b.String()
+}
+
 func readFixture(t *testing.T) []byte {
 	t.Helper()
-	data, err := os.ReadFile("testdata/fixture.har")
+	data, err := os.ReadFile("testdata/fixture.xml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,14 +77,8 @@ func TestParse(t *testing.T) {
 	if doc.Sequence != 0 || doc.Method != "GET" || doc.Host != "shop.test" || doc.Path != "/" || doc.Status != 200 {
 		t.Errorf("document entry parsed wrong: %+v", doc)
 	}
-	if doc.Cookies != 1 {
-		t.Errorf("cookies = %d, want 1", doc.Cookies)
-	}
-	if doc.RequestHeader("user-agent") != "test" {
-		t.Errorf("case-insensitive header lookup failed")
-	}
-	if doc.Duration != 12500*time.Microsecond {
-		t.Errorf("duration = %v, want 12.5ms", doc.Duration)
+	if doc.RequestHeader("user-agent") != "test" || doc.ResponseMIME != "text/html" {
+		t.Errorf("headers parsed wrong: %v / %v", doc.RequestHeaders, doc.ResponseHeaders)
 	}
 	if want := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC); !doc.StartedAt.Equal(want) {
 		t.Errorf("started = %v, want %v", doc.StartedAt, want)
@@ -70,21 +103,71 @@ func TestParse(t *testing.T) {
 	if trace.Entries[4].Status != 500 {
 		t.Errorf("error status not kept")
 	}
-	if trace.Entries[5].ResponseBody != nil {
-		t.Errorf("missing body should be nil, got %q", trace.Entries[5].ResponseBody)
+	if len(trace.Entries[5].ResponseBody) != 0 {
+		t.Errorf("missing body should be empty, got %q", trace.Entries[5].ResponseBody)
 	}
 	if png := trace.Entries[6].ResponseBody; !bytes.HasPrefix(png, []byte("\x89PNG")) {
-		t.Errorf("base64 body not decoded: %q", png)
+		t.Errorf("binary body not kept: %q", png)
+	}
+}
+
+func TestParseDecodesBodies(t *testing.T) {
+	page := "<html><body>שלום, Enso raised $15M</body></html>"
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	zw.Write([]byte(page))
+	zw.Close()
+	input := burpXML(
+		rawItem{"https://news.test/a", "GET", "GET /a HTTP/2\r\nHost: news.test\r\n\r\n",
+			"HTTP/2 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Encoding: gzip\r\n\r\n" + gz.String()},
+		rawItem{"https://news.test/api", "POST", "POST /api HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{\"q\":1}",
+			"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: application/json\r\n\r\n4\r\n{\"a\"\r\n3\r\n:1}\r\n0\r\n\r\n"},
+		rawItem{"https://news.test/br", "GET", "GET /br HTTP/1.1\n\n", "HTTP/1.1 200 OK\r\nContent-Encoding: br\r\n\r\n\x8b\x01"},
+		rawItem{"https://news.test/none", "GET", "GET /none HTTP/1.1\r\n\r\n", ""},
+	)
+	trace, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := trace.Entries[0]; string(e.ResponseBody) != page || e.Class != ClassDocument || e.StartedAt.IsZero() {
+		t.Errorf("gzip page: %q, %s, %v", e.ResponseBody, e.Class, e.StartedAt)
+	}
+	if e := trace.Entries[1]; string(e.ResponseBody) != `{"a":1}` || string(e.RequestBody) != `{"q":1}` || e.RequestMIME != "application/json" {
+		t.Errorf("chunked: %q, request %q (%s)", e.ResponseBody, e.RequestBody, e.RequestMIME)
+	}
+	if e := trace.Entries[2]; string(e.ResponseBody) != "\x8b\x01" {
+		t.Errorf("brotli body should be kept as recorded: %q", e.ResponseBody)
+	}
+	if e := trace.Entries[3]; e.Status != 0 || e.ResponseBody != nil {
+		t.Errorf("item with no response: status %d, body %q", e.Status, e.ResponseBody)
+	}
+
+	// Sanitizing stores bodies decoded and drops the coding headers.
+	var out bytes.Buffer
+	if _, err := Sanitize(strings.NewReader(input), &out, DefaultSanitizeConfig()); err != nil {
+		t.Fatal(err)
+	}
+	clean, err := Parse(&out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := clean.Entries[0]; string(e.ResponseBody) != page || e.ResponseHeader("Content-Encoding") != "" {
+		t.Errorf("sanitized gzip page: %q, coding %q", e.ResponseBody, e.ResponseHeader("Content-Encoding"))
+	}
+	if e := clean.Entries[1]; string(e.ResponseBody) != `{"a":1}` || e.ResponseHeader("Transfer-Encoding") != "" {
+		t.Errorf("sanitized chunked body: %q", e.ResponseBody)
+	}
+	if e := clean.Entries[2]; e.ResponseHeader("Content-Encoding") != "br" || string(e.ResponseBody) != "\x8b\x01" {
+		t.Errorf("sanitized brotli: %q %q", e.ResponseHeader("Content-Encoding"), e.ResponseBody)
 	}
 }
 
 func TestParseErrors(t *testing.T) {
 	for name, input := range map[string]string{
-		"not json":        "nope",
-		"no log":          `{}`,
-		"no entries":      `{"log": {}}`,
-		"bad url":         `{"log": {"entries": [{"request": {"url": "http://a b/%zz"}}]}}`,
-		"bad base64 body": `{"log": {"entries": [{"request": {"url": "https://a.test/"}, "response": {"content": {"text": "***", "encoding": "base64"}}}]}}`,
+		"not xml":         "nope",
+		"no items":        `<?xml version="1.0"?><other/>`,
+		"bad url":         `<items><item><url>http://a b/%zz</url></item></items>`,
+		"bad base64 body": `<items><item><url>https://a.test/</url><response base64="true">***</response></item></items>`,
 	} {
 		if _, err := Parse(strings.NewReader(input)); err == nil {
 			t.Errorf("%s: want an error", name)
@@ -94,16 +177,16 @@ func TestParseErrors(t *testing.T) {
 
 func TestClassify(t *testing.T) {
 	want := []Class{
-		ClassDocument,  // _resourceType document
-		ClassAPI,       // xhr
-		ClassDocument,  // form POST navigation
-		ClassAPI,       // fetch
-		ClassAPI,       // xhr with a 500
-		ClassAPI,       // fetch with no body
-		ClassMedia,     // image
+		ClassDocument,  // text/html
+		ClassAPI,       // JSON
+		ClassDocument,  // form POST navigation: no MIME or extension, Sec-Fetch-Dest document
+		ClassAPI,       // JSON
+		ClassAPI,       // JSON with a 500
+		ClassAPI,       // JSON with no body
+		ClassMedia,     // image/png
 		ClassTelemetry, // analytics host
-		ClassScript,    // no _resourceType: from MIME
-		ClassFont,      // no _resourceType or MIME: from extension
+		ClassScript,    // from MIME
+		ClassFont,      // no MIME: from extension
 	}
 	for i, e := range parseFixture(t).Entries {
 		if e.Class != want[i] {
@@ -121,8 +204,10 @@ func TestClassifyFallbacks(t *testing.T) {
 		{Entry{Host: "a.test", Path: "/x", ResponseMIME: "text/css"}, ClassStylesheet},
 		{Entry{Host: "a.test", Path: "/x", ResponseMIME: "video/mp4"}, ClassMedia},
 		{Entry{Host: "a.test", Path: "/page.html"}, ClassDocument},
-		{Entry{Host: "a.test", Path: "/cdn-cgi/rum", ResourceType: "xhr"}, ClassTelemetry},
-		{Entry{Host: "sub.doubleclick.net:443", Path: "/x", ResourceType: "script"}, ClassTelemetry},
+		{Entry{Host: "a.test", Path: "/cdn-cgi/rum", ResponseMIME: "application/json"}, ClassTelemetry},
+		{Entry{Host: "sub.doubleclick.net:443", Path: "/x", ResponseMIME: "text/javascript"}, ClassTelemetry},
+		{Entry{Host: "a.test", Path: "/x", RequestHeaders: []Header{{"Sec-Fetch-Dest", "empty"}}}, ClassAPI},
+		{Entry{Host: "a.test", Path: "/x", RequestHeaders: []Header{{"sec-fetch-dest", "style"}}}, ClassStylesheet},
 		{Entry{Host: "a.test", Path: "/x"}, ClassUnknown},
 	}
 	for _, tt := range tests {
@@ -160,22 +245,22 @@ func TestSanitizeRemovesSecrets(t *testing.T) {
 	out, report := sanitizeFixture(t, DefaultSanitizeConfig())
 	for _, secret := range []string{"tok-SECRET", "csrf-SECRET", "r-SECRET", "hunter2", "abc123", "a@b.test", "123.456"} {
 		if bytes.Contains(out, []byte(secret)) {
-			t.Errorf("sanitized HAR still contains %q", secret)
+			t.Errorf("sanitized capture still contains %q", secret)
 		}
 	}
-	if report.Entries != 10 || report.Cookies != 1 || report.Headers != 4 {
+	if report.Entries != 10 || report.Headers != 4 {
 		t.Errorf("unexpected report: %+v", report)
 	}
 
 	trace, err := Parse(bytes.NewReader(out))
 	if err != nil {
-		t.Fatalf("sanitized HAR does not parse: %v", err)
+		t.Fatalf("sanitized capture does not parse: %v", err)
 	}
 	if found := Unsanitized(trace); len(found) != 0 {
-		t.Errorf("sanitized HAR fails the check: %v", found)
+		t.Errorf("sanitized capture fails the check: %v", found)
 	}
-	if found := Unsanitized(parseFixture(t)); len(found) != 4 {
-		t.Errorf("raw fixture should report cookie list, Cookie, Set-Cookie and Authorization; got %v", found)
+	if found := Unsanitized(parseFixture(t)); len(found) != 3 {
+		t.Errorf("raw fixture should report Cookie, Set-Cookie and Authorization; got %v", found)
 	}
 
 	// Structure that agents need is kept.
@@ -219,8 +304,11 @@ func TestSanitizeRemovesSecrets(t *testing.T) {
 	if !bytes.Equal(trace.Entries[6].ResponseBody, parseFixture(t).Entries[6].ResponseBody) {
 		t.Errorf("binary body changed")
 	}
-	if !bytes.Contains(out, []byte(`"_initiator"`)) || !bytes.Contains(out, []byte(`"callFrames"`)) {
-		t.Errorf("unknown HAR fields should be kept by default")
+	if !strings.Contains(trace.Entries[1].RequestHeader("Host"), "shop.test") {
+		t.Errorf("request headers lost: %v", trace.Entries[1].RequestHeaders)
+	}
+	if !bytes.Contains(out, []byte(`burpVersion="2026.8"`)) || !bytes.Contains(out, []byte("<!DOCTYPE items")) {
+		t.Errorf("export prolog not kept:\n%.400s", out)
 	}
 }
 
@@ -231,7 +319,7 @@ func TestSanitizeIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Headers+report.Cookies+report.Params+report.BodyFields != 0 {
+	if report.Headers+report.Params+report.BodyFields != 0 {
 		t.Errorf("second pass changed more values: %+v", report)
 	}
 	if !bytes.Equal(once, twice.Bytes()) {
@@ -243,7 +331,6 @@ func TestSanitizeTrimming(t *testing.T) {
 	cfg := DefaultSanitizeConfig()
 	cfg.StripBodies = []Class{ClassScript, ClassMedia}
 	cfg.DropClasses = []Class{ClassTelemetry, ClassFont}
-	cfg.TrimInitiators = true
 	out, report := sanitizeFixture(t, cfg)
 	if report.Entries != 8 || report.DroppedEntries != 2 || report.StrippedBodies != 2 {
 		t.Errorf("unexpected report: %+v", report)
@@ -256,15 +343,15 @@ func TestSanitizeTrimming(t *testing.T) {
 		if e.Class == ClassTelemetry || e.Class == ClassFont {
 			t.Errorf("entry %s should have been dropped", e.URL)
 		}
-		if (e.Class == ClassScript || e.Class == ClassMedia) && e.ResponseBody != nil {
+		if (e.Class == ClassScript || e.Class == ClassMedia) && len(e.ResponseBody) != 0 {
 			t.Errorf("body of %s should have been stripped", e.URL)
 		}
 	}
 	if trace.Entries[1].ResponseBody == nil {
 		t.Errorf("API bodies must be kept")
 	}
-	if bytes.Contains(out, []byte("callFrames")) || !bytes.Contains(out, []byte(`"_initiator"`)) {
-		t.Errorf("initiator stacks should be gone but the initiator kept")
+	if !bytes.Contains(out, []byte(strippedComment)) {
+		t.Errorf("stripped items should say so in their comment")
 	}
 }
 
@@ -296,35 +383,19 @@ func TestSelectAndReports(t *testing.T) {
 func TestSanitizeNestedIdentifiers(t *testing.T) {
 	data := `{"data":{"ui":"visitor-1","q":"laptops"}}`
 	enc := url.QueryEscape(data)
-	input := `{"log": {"entries": [{
-		"request": {
-			"method": "GET",
-			"url": "https://feed.test/json?llvl=2&data=` + enc + `",
-			"headers": [
-				{"name": ":path", "value": "/json?llvl=2&data=` + enc + `"},
-				{"name": "Referer", "value": "https://shop.test/p?uid=visitor-1&page=2"}
-			],
-			"queryString": [{"name": "data", "value": "` + enc + `"}]
-		},
-		"response": {"status": 200, "headers": [], "content": {
-			"mimeType": "application/javascript",
-			"text": "trc_json_response =\n{\"items\":[{\"title\":\"Hello\"}],\"sd\":\"visitor-1\"};"
-		}}
-	}, {
-		"request": {"method": "GET", "url": "https://shop.test/cb?x=1", "headers": []},
-		"response": {"status": 200, "headers": [], "content": {
-			"mimeType": "text/javascript",
-			"text": "cb({\"user_id\":\"visitor-1\",\"ok\":true});"
-		}}
-	}]}}`
+	input := burpXML(
+		rawItem{"https://feed.test/json?llvl=2&data=" + enc, "GET",
+			"GET /json?llvl=2&data=" + enc + " HTTP/2\r\nReferer: https://shop.test/p?uid=visitor-1&page=2\r\n\r\n",
+			"HTTP/2 200 OK\r\nContent-Type: application/javascript\r\nContent-Length: 70\r\n\r\n" +
+				"trc_json_response =\n{\"items\":[{\"title\":\"Hello\"}],\"sd\":\"visitor-1\"};"},
+		rawItem{"https://shop.test/cb?x=1", "GET", "GET /cb?x=1 HTTP/1.1\r\n\r\n",
+			"HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\n\r\ncb({\"user_id\":\"visitor-1\",\"ok\":true});"},
+	)
 	var out bytes.Buffer
 	if _, err := Sanitize(strings.NewReader(input), &out, DefaultSanitizeConfig()); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "visitor-1") {
-		t.Fatalf("identifier survived:\n%s", out.String())
-	}
-	trace, err := Parse(&out)
+	trace, err := Parse(bytes.NewReader(out.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,15 +408,50 @@ func TestSanitizeNestedIdentifiers(t *testing.T) {
 	if body := string(trace.Entries[1].ResponseBody); !strings.HasPrefix(body, "cb({") || !strings.HasSuffix(body, "});") {
 		t.Errorf("JSONP wrapper not kept: %s", body)
 	}
+	for _, e := range trace.Entries {
+		for _, part := range [][]byte{[]byte(e.URL), e.ResponseBody, []byte(e.RequestHeader("Referer"))} {
+			if bytes.Contains(part, []byte("visitor-1")) {
+				t.Errorf("identifier survived in item %d: %s", e.Sequence, part)
+			}
+		}
+	}
+	if got, want := trace.Entries[0].ResponseHeader("Content-Length"), fmt.Sprint(len(trace.Entries[0].ResponseBody)); got != want {
+		t.Errorf("Content-Length %s, body is %s bytes", got, want)
+	}
+	raw, _ := readExport(bytes.NewReader(out.Bytes()))
+	if req := string(mustRaw(raw.items[0].Request)); strings.Contains(req, "visitor-1") || !strings.HasPrefix(req, "GET /json?llvl=2&data=") {
+		t.Errorf("request line not redacted: %.120s", req)
+	}
 }
 
 func TestClassifyThirdPartyNoise(t *testing.T) {
 	for _, e := range []Entry{
-		{Host: "www.google.com", Path: "/recaptcha/api2/reload", ResourceType: "xhr"},
-		{Host: "jnn-pa.googleapis.com", Path: "/$rpc/x", ResourceType: "fetch"},
+		{Host: "www.google.com", Path: "/recaptcha/api2/reload", ResponseMIME: "application/json"},
+		{Host: "jnn-pa.googleapis.com", Path: "/$rpc/x", ResponseMIME: "application/json"},
 	} {
 		if got := Classify(&e); got != ClassTelemetry {
 			t.Errorf("Classify(%s%s) = %s, want telemetry", e.Host, e.Path, got)
 		}
+	}
+}
+
+func TestParseConvertsHTMLResponses(t *testing.T) {
+	trace := parseFixture(t)
+	var pages, other int
+	for _, e := range trace.Entries {
+		if e.Page != nil {
+			pages++
+			if string(e.Readable()) != e.Page.Body {
+				t.Errorf("seq %d: Readable is not the page body", e.Sequence)
+			}
+		} else if len(e.ResponseBody) > 0 {
+			other++
+			if string(e.Readable()) != string(e.ResponseBody) {
+				t.Errorf("seq %d: Readable is not the body", e.Sequence)
+			}
+		}
+	}
+	if pages == 0 || other == 0 {
+		t.Errorf("fixture should have HTML and other responses: %d pages, %d other", pages, other)
 	}
 }

@@ -2,7 +2,7 @@
 //
 // A scenario is a directory holding scenario.yaml (benchmark mechanics),
 // goal.md (the natural-language task), expected.json (the structured answer)
-// and a sanitized HAR. The manifest never carries model-specific settings.
+// and a sanitized Burp Suite capture. The manifest never carries model-specific settings.
 package scenario
 
 import (
@@ -21,7 +21,7 @@ const ManifestName = "scenario.yaml"
 
 // Default file names, used when the manifest leaves them out.
 const (
-	DefaultHAR      = "session.har"
+	DefaultCapture  = "session.xml"
 	DefaultGoal     = "goal.md"
 	DefaultExpected = "expected.json"
 )
@@ -40,7 +40,7 @@ type Scenario struct {
 	Name       string     `yaml:"name"`
 	Version    int        `yaml:"version"`
 	Tags       []string   `yaml:"tags"`
-	HAR        string     `yaml:"har"`
+	Capture    string     `yaml:"capture"`
 	Goal       string     `yaml:"goal"`
 	Expected   string     `yaml:"expected"`
 	Evaluation Evaluation `yaml:"evaluation"`
@@ -90,15 +90,22 @@ type StageLimits struct {
 	MaxTokens      int `yaml:"max_tokens"`
 }
 
+// GenerateOnly is the evaluation type of a scenario with no goal: it only
+// measures generation, and the reader stage does not run.
+const GenerateOnly = "none"
+
+// Answerable reports whether the scenario has a goal for the reader stage.
+func (s *Scenario) Answerable() bool { return s.Evaluation.Type != GenerateOnly }
+
 // AllowsExtraFields reports whether answers may carry fields beyond the
 // required ones. It defaults to true, as in the spec's example manifest.
 func (e Evaluation) AllowsExtraFields() bool {
 	return e.AllowExtraFields == nil || *e.AllowExtraFields
 }
 
-// HARPath, GoalPath and ExpectedPath join the manifest's file names onto
+// CapturePath, GoalPath and ExpectedPath join the manifest's file names onto
 // the scenario directory.
-func (s *Scenario) HARPath() string      { return filepath.Join(s.Dir, s.HAR) }
+func (s *Scenario) CapturePath() string  { return filepath.Join(s.Dir, s.Capture) }
 func (s *Scenario) GoalPath() string     { return filepath.Join(s.Dir, s.Goal) }
 func (s *Scenario) ExpectedPath() string { return filepath.Join(s.Dir, s.Expected) }
 
@@ -124,8 +131,8 @@ func Load(dir string) (*Scenario, error) {
 }
 
 func (s *Scenario) applyDefaults() {
-	if s.HAR == "" {
-		s.HAR = DefaultHAR
+	if s.Capture == "" {
+		s.Capture = DefaultCapture
 	}
 	if s.Goal == "" {
 		s.Goal = DefaultGoal

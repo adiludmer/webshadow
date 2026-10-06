@@ -7,7 +7,7 @@ tags:
   - comparison
   - synthetic
 
-har: session.har
+capture: session.xml
 goal: goal.md
 expected: expected.json
 

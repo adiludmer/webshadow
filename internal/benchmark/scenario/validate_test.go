@@ -25,7 +25,10 @@ limits:
     timeout_seconds: 30
 `
 
-const validHAR = `{"log": {"version": "1.2", "entries": [{"request": {"method": "GET", "url": "https://example.test/"}}]}}`
+// capture wraps <item> elements in a minimal Burp export.
+func burpExport(items string) string { return `<?xml version="1.0"?><items>` + items + `</items>` }
+
+var validCapture = burpExport(`<item><url><![CDATA[https://example.test/]]></url><method>GET</method></item>`)
 
 // writeScenario creates a valid scenario in a temp dir, then applies
 // overrides: a file name mapped to new contents, or to "" to delete it.
@@ -36,7 +39,7 @@ func writeScenario(t *testing.T, overrides map[string]string) string {
 		"scenario.yaml": validManifest,
 		"goal.md":       "# Goal\n\nFind the product.\n",
 		"expected.json": `{"product_id": "123", "price": 1299}`,
-		"session.har":   validHAR,
+		"session.xml":   validCapture,
 	}
 	for name, content := range overrides {
 		files[name] = content
@@ -75,7 +78,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.HAR != DefaultHAR || s.Goal != DefaultGoal || s.Expected != DefaultExpected {
+	if s.Capture != DefaultCapture || s.Goal != DefaultGoal || s.Expected != DefaultExpected {
 		t.Errorf("file defaults not applied: %+v", s)
 	}
 	if s.Limits.Generate.MaxSteps != DefaultGenerateMaxSteps || s.Limits.Answer.TimeoutSeconds != DefaultAnswerTimeoutSeconds {
@@ -101,11 +104,10 @@ func TestValidationErrors(t *testing.T) {
 		{"bad id", map[string]string{"scenario.yaml": replace("id: tiny", "id: Tiny Scenario")}, "must be lowercase"},
 		{"missing name", map[string]string{"scenario.yaml": replace("name: Tiny scenario\n", "")}, "name is required"},
 		{"bad version", map[string]string{"scenario.yaml": replace("version: 1", "version: 0")}, "version must be 1"},
-		{"missing har", map[string]string{"session.har": ""}, "har: file session.har not found"},
-		{"har escapes dir", map[string]string{"scenario.yaml": validManifest + "har: ../outside.har\n"}, "inside the scenario directory"},
-		{"har not json", map[string]string{"session.har": "not json"}, "invalid JSON"},
-		{"har without entries", map[string]string{"session.har": `{"log": {}}`}, "missing log.entries"},
-		{"unsanitized har", map[string]string{"session.har": `{"log": {"entries": [{"request": {"url": "https://example.test/", "headers": [{"name": "Cookie", "value": "sid=1"}]}}]}}`}, "is not sanitized"},
+		{"missing capture", map[string]string{"session.xml": ""}, "capture: file session.xml not found"},
+		{"capture escapes dir", map[string]string{"scenario.yaml": validManifest + "capture: ../outside.xml\n"}, "inside the scenario directory"},
+		{"capture not burp xml", map[string]string{"session.xml": "<other/>"}, "expected a Burp Suite XML export"},
+		{"unsanitized capture", map[string]string{"session.xml": burpExport(`<item><url>https://example.test/</url><request>GET / HTTP/1.1` + "\r\nCookie: sid=1\r\n\r\n" + `</request></item>`)}, "is not sanitized"},
 		{"missing goal", map[string]string{"goal.md": ""}, "goal: file goal.md not found"},
 		{"empty goal", map[string]string{"goal.md": "  \n\n"}, "goal.md is empty"},
 		{"missing expected", map[string]string{"expected.json": ""}, "expected: file expected.json not found"},
@@ -141,8 +143,8 @@ func TestValidationErrors(t *testing.T) {
 	}
 }
 
-func TestEmptyHARIsAWarning(t *testing.T) {
-	res := validate(t, writeScenario(t, map[string]string{"session.har": `{"log": {"entries": []}}`}))
+func TestEmptyCaptureIsAWarning(t *testing.T) {
+	res := validate(t, writeScenario(t, map[string]string{"session.xml": burpExport("")}))
 	if res.HasErrors() {
 		t.Fatalf("want no errors, got %v", res.Issues)
 	}
@@ -213,5 +215,21 @@ func TestCheckedInSuiteIsValid(t *testing.T) {
 	res := ValidateDirs(dirs, Options{})
 	if len(res.Issues) != 0 {
 		t.Fatalf("checked-in suite has issues: %v", res.Issues)
+	}
+}
+
+func TestGenerateOnlyScenario(t *testing.T) {
+	manifest := "id: browse\nname: Browse only\nversion: 1\nevaluation:\n  type: none\n"
+	res := validate(t, writeScenario(t, map[string]string{"scenario.yaml": manifest, "goal.md": "", "expected.json": ""}))
+	if len(res.Issues) != 0 {
+		t.Fatalf("want no issues, got %v", res.Issues)
+	}
+	if res.Scenarios[0].Answerable() {
+		t.Error("generate-only scenario reports itself answerable")
+	}
+
+	res = validate(t, writeScenario(t, map[string]string{"scenario.yaml": manifest + "  required_fields: [price]\n"}))
+	if len(res.Issues) != 1 || !strings.Contains(res.Issues[0].Message, "type none takes no other settings") {
+		t.Fatalf("issues: %v", res.Issues)
 	}
 }

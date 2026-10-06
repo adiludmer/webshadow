@@ -10,7 +10,7 @@ import (
 const usage = `usage: webshadow <command> [arguments]
 
 Commands:
-  bench    run and inspect the HAR benchmark
+  bench    run and inspect the capture benchmark
 `
 
 func main() {

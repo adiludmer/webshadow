@@ -45,6 +45,9 @@ type Response struct {
 	Usage      Usage
 }
 
+// StopLength is the StopReason of a reply cut off by the token budget.
+const StopLength = "length"
+
 // Model is a chat model the benchmark can call.
 type Model interface {
 	// ID is the registry id, used in run records.

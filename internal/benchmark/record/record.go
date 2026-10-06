@@ -18,7 +18,7 @@ import (
 const SchemaVersion = 1
 
 // ExternalGenerator is the generator id for trees made outside the
-// benchmark, such as one passed to `bench answer --tree`.
+// benchmark: a tree passed to `bench answer --tree` that has no manifest.
 const ExternalGenerator = "external"
 
 // Record is one case: one scenario, generator, reader and repetition.
@@ -72,6 +72,71 @@ func StageOf(r agent.Result) Stage {
 	}
 }
 
+// Tree describes a generated shadow tree. It is stored as tree-NN.json
+// next to the tree-NN directory, outside the tree itself.
+type Tree struct {
+	SchemaVersion   int    `json:"schema_version"`
+	RunID           string `json:"run_id"`
+	ScenarioID      string `json:"scenario_id"`
+	ScenarioVersion int    `json:"scenario_version"`
+	Repetition      int    `json:"repetition"`
+
+	GeneratorModelID string `json:"generator_model_id"`
+	GeneratorPrompt  string `json:"generator_prompt"`
+
+	// Status is "generated" or "generation_failed".
+	Status string `json:"status"`
+	Digest string `json:"digest"`
+	Files  int    `json:"files"`
+	Bytes  int64  `json:"bytes"`
+	Error  string `json:"error,omitempty"`
+
+	// Documents counts the capture's HTML pages, converted to Markdown
+	// without a model, and how they were placed in the tree.
+	Documents *Documents `json:"documents,omitempty"`
+
+	Generation Stage `json:"generation"`
+}
+
+// Documents counts converted pages: placed by the generator, filed under
+// pages/ because it left them unplaced, or skipped at a tree limit.
+type Documents struct {
+	Total      int `json:"total"`
+	Placed     int `json:"placed"`
+	AutoPlaced int `json:"auto_placed"`
+	Skipped    int `json:"skipped,omitempty"`
+}
+
+// TreeDir is where a generated tree lives:
+// <runs>/<run id>/trees/<scenario>/<generator>/tree-NN.
+func TreeDir(runsDir, runID, scenarioID, generatorID string, repetition int) string {
+	return filepath.Join(runsDir, runID, "trees", scenarioID, generatorID, fmt.Sprintf("tree-%02d", repetition))
+}
+
+// TreeManifestPath is the manifest file for a tree directory.
+func TreeManifestPath(treeDir string) string {
+	return filepath.Clean(treeDir) + ".json"
+}
+
+// WriteTree stores t as the manifest of treeDir.
+func WriteTree(treeDir string, t *Tree) error {
+	return writeJSON(TreeManifestPath(treeDir), t)
+}
+
+// ReadTree loads the manifest of treeDir. A missing manifest returns an
+// error satisfying errors.Is(err, fs.ErrNotExist).
+func ReadTree(treeDir string) (*Tree, error) {
+	data, err := os.ReadFile(TreeManifestPath(treeDir))
+	if err != nil {
+		return nil, err
+	}
+	var t Tree
+	if err := json.Unmarshal(data, &t); err != nil {
+		return nil, fmt.Errorf("%s: %w", TreeManifestPath(treeDir), err)
+	}
+	return &t, nil
+}
+
 // NewRunID names a run by its UTC start time.
 func NewRunID(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
 
@@ -86,16 +151,22 @@ func Path(runsDir string, r *Record) string {
 // writes to a temporary file first so a crash never leaves half a record.
 func Write(runsDir string, r *Record) (string, error) {
 	path := Path(runsDir, r)
+	return path, writeJSON(path, r)
+}
+
+// writeJSON writes v indented, through a temporary file so a crash never
+// leaves half a file.
+func writeJSON(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
+		return err
 	}
-	data, err := json.MarshalIndent(r, "", "  ")
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		return "", err
+		return err
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
-		return "", err
+		return err
 	}
-	return path, os.Rename(tmp, path)
+	return os.Rename(tmp, path)
 }

@@ -10,6 +10,29 @@ models:
     max_tokens: 2048
     temperature: 0
 
+  # Local models that `make bench MODEL=<id>` downloads into models/.
+  # Q4_K_M quantizations; the 7B and 8B need about 6GB of RAM at this context.
+  - id: qwen2.5-7b
+    adapter: llama
+    model_path: ${WEBSHADOW_MODELS_DIR}/qwen2.5-7b.gguf
+    context_size: 16384
+    max_tokens: 2048
+    temperature: 0
+
+  - id: qwen2.5-3b
+    adapter: llama
+    model_path: ${WEBSHADOW_MODELS_DIR}/qwen2.5-3b.gguf
+    context_size: 16384
+    max_tokens: 2048
+    temperature: 0
+
+  - id: llama3.1-8b
+    adapter: llama
+    model_path: ${WEBSHADOW_MODELS_DIR}/llama3.1-8b.gguf
+    context_size: 16384
+    max_tokens: 2048
+    temperature: 0
+
   # Replies with fixed text; for smoke-testing the pipeline without a model.
   - id: fake-noop
     adapter: fake

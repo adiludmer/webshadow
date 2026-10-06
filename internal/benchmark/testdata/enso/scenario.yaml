@@ -1,15 +1,10 @@
+# Test fixture: twelve items from a Geektime capture, including the JSON
+# feeds that carry the Enso headline. Not part of the benchmark suite.
 id: geektime-enso-funding
 name: How much did Enso raise in its latest round (Geektime)
 version: 1
 tags:
-  - news
-  - funding
-  - hebrew
-  - real-capture
-
-har: session.har
-goal: goal.md
-expected: expected.json
+  - test-fixture
 
 evaluation:
   type: fields
