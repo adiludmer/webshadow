@@ -9,10 +9,16 @@ LLAMA_LIB   := $(LLAMA_BUILD)/src/libllama.a
 # Extra CMake flags for GPU backends, e.g. -DGGML_METAL=ON or -DGGML_CUDA=ON.
 LLAMA_CMAKE_FLAGS ?=
 
-.PHONY: build llama llama-lib test test-llama clean-llama
+.PHONY: build llama llama-lib test test-llama clean-llama release
 
 build:
 	go build -o bin/webshadow ./cmd/webshadow
+
+# A release binary embeds the pinned Chromium snapshot for its target
+# (internal/chromium/chromium.lock). Cross-build with GOOS/GOARCH.
+release:
+	./scripts/fetch-chromium.sh
+	go build -tags chromium_bundle -o bin/webshadow ./cmd/webshadow
 
 llama: llama-lib
 	CGO_ENABLED=1 go build -tags llama -o bin/webshadow ./cmd/webshadow

@@ -113,6 +113,13 @@ func (s *Store) Dir() string { return s.dir }
 // Clock returns the session clock.
 func (s *Store) Clock() *Clock { return s.clock }
 
+// Session returns a copy of the current session metadata.
+func (s *Store) Session() Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.session
+}
+
 // UpdateSession changes session metadata, such as the browser launch
 // configuration, and rewrites session.json.
 func (s *Store) UpdateSession(f func(*Session)) error {

@@ -38,3 +38,6 @@ go.work.sum
 
 # Build output
 /bin/
+
+# Chromium snapshot fetched for release builds
+/internal/chromium/bundle/

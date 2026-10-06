@@ -10,7 +10,9 @@ import (
 const usage = `usage: webshadow <command> [arguments]
 
 Commands:
-  bench    run and inspect the HAR benchmark
+  browser      record a browsing session through an isolated Chromium
+  recordings   list, inspect and delete recorded sessions
+  bench        run and inspect the HAR benchmark
 `
 
 func main() {
@@ -24,6 +26,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	switch args[0] {
+	case "browser":
+		return runBrowser(args[1:], stdout, stderr)
+	case "recordings":
+		return runRecordings(args[1:], stdout, stderr)
 	case "bench":
 		return runBench(args[1:], stdout, stderr)
 	case "-h", "-help", "--help", "help":
