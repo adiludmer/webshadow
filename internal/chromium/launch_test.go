@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -138,5 +139,19 @@ func TestLaunchThroughProxy(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(profile, "DevToolsActivePort")); err != nil {
 		t.Errorf("profile was not the one Chromium used: %v", err)
+	}
+}
+
+func TestLaunchFailureShowsBrowserOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stand-in")
+	}
+	exe := filepath.Join(t.TempDir(), "chrome")
+	os.WriteFile(exe, []byte("#!/bin/sh\necho 'No usable sandbox!' >&2\nexit 1\n"), 0o755)
+	_, err := Launch(context.Background(), LaunchOptions{
+		Executable: exe, ProfileDir: t.TempDir(), ProxyAddr: "127.0.0.1:1", SPKIHash: "x",
+	})
+	if err == nil || !strings.Contains(err.Error(), "No usable sandbox!") {
+		t.Errorf("err = %v, want the browser's output", err)
 	}
 }

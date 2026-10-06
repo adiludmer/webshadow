@@ -100,7 +100,9 @@ func checked(path, source string) (*Runtime, error) {
 // findSystem looks for an installed Chromium or Chrome. It only borrows
 // the executable; the profile is always Webshadow's own.
 func findSystem() string {
-	for _, name := range []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome"} {
+	// Google Chrome first: Linux distributions often ship chromium as a
+	// snap wrapper whose confinement breaks a custom profile directory.
+	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"} {
 		if p, err := exec.LookPath(name); err == nil {
 			return p
 		}

@@ -22,7 +22,7 @@ func browserForTest(t *testing.T) string {
 	if p := os.Getenv(chromium.EnvExecutable); p != "" {
 		return p
 	}
-	for _, name := range []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable"} {
+	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser"} {
 		if p, err := exec.LookPath(name); err == nil {
 			return p
 		}

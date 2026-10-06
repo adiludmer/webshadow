@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -103,7 +104,13 @@ func Launch(ctx context.Context, o LaunchOptions) (*Browser, error) {
 
 	b := &Browser{Args: o.Args(), done: make(chan struct{})}
 	b.cmd = exec.Command(o.Executable, b.Args...)
-	b.cmd.Stdout, b.cmd.Stderr = o.Log, o.Log
+	// The tail of the browser's output explains a failed start.
+	tail := &tailWriter{max: 2048}
+	var out io.Writer = tail
+	if o.Log != nil {
+		out = io.MultiWriter(o.Log, tail)
+	}
+	b.cmd.Stdout, b.cmd.Stderr = out, out
 	setProcessGroup(b.cmd)
 	if err := b.cmd.Start(); err != nil {
 		return nil, fmt.Errorf("starting chromium: %w", err)
@@ -116,6 +123,9 @@ func Launch(ctx context.Context, o LaunchOptions) (*Browser, error) {
 	port, path, err := waitDevTools(ctx, o.ProfileDir, b.done)
 	if err != nil {
 		b.Close()
+		if t := strings.TrimSpace(tail.String()); t != "" {
+			err = fmt.Errorf("%w; chromium output ends:\n%s", err, t)
+		}
 		return nil, err
 	}
 	b.DevToolsURL = fmt.Sprintf("ws://127.0.0.1:%d%s", port, path)
@@ -124,6 +134,29 @@ func Launch(ctx context.Context, o LaunchOptions) (*Browser, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+// tailWriter keeps the last max bytes written to it.
+type tailWriter struct {
+	mu  sync.Mutex
+	max int
+	buf []byte
+}
+
+func (t *tailWriter) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	if over := len(t.buf) - t.max; over > 0 {
+		t.buf = append(t.buf[:0], t.buf[over:]...)
+	}
+	return len(p), nil
+}
+
+func (t *tailWriter) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return string(t.buf)
 }
 
 // waitDevTools polls for the DevToolsActivePort file Chromium writes once
