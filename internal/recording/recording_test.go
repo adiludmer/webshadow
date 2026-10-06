@@ -161,20 +161,20 @@ func TestTimelineIsDeterministic(t *testing.T) {
 		},
 	}
 	want := []string{
-		"browser.Page.frameNavigated",
-		"browser.interaction.click",
+		"browser.navigation",
+		"browser.click",
 		"http.request",
 		"http.error",
 		"http.request",
 		"http.response",
-		"browser.Page.frameNavigated",
+		"browser.navigation",
 	}
 	rng := rand.New(rand.NewSource(1))
 	for round := 0; round < 20; round++ {
 		rng.Shuffle(len(r.Exchanges), func(i, j int) { r.Exchanges[i], r.Exchanges[j] = r.Exchanges[j], r.Exchanges[i] })
 		rng.Shuffle(len(r.Events), func(i, j int) { r.Events[i], r.Events[j] = r.Events[j], r.Events[i] })
 		var got []string
-		for _, e := range Timeline(r) {
+		for _, e := range Timeline(r, true) {
 			got = append(got, e.Kind)
 		}
 		if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -182,7 +182,7 @@ func TestTimelineIsDeterministic(t *testing.T) {
 		}
 	}
 	var buf bytes.Buffer
-	WriteTimeline(&buf, Timeline(r))
+	WriteTimeline(&buf, Timeline(r, true))
 	if !strings.Contains(buf.String(), "   14.612 http.response            200 exchange=ex_000001") {
 		t.Errorf("timeline text:\n%s", buf.String())
 	}
