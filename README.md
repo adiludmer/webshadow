@@ -20,7 +20,20 @@ when it stops (`-keep-profile` keeps it).
 
 A recording is a directory under `~/.webshadow/recordings/<session>/`:
 `session.json`, `http.jsonl` (one request/response per line),
-`browser.jsonl` and `bodies/`. Recordings hold cookies, tokens and
+`browser.jsonl` (navigation, page and target events from the DevTools
+protocol, plus clicks, typing and form submissions from a small injected
+script) and `bodies/`. Both streams share one session clock, so
+`recordings timeline` shows each action next to the requests it caused:
+
+```
+    7.261 browser.input            role=searchbox name=field-keywords label="Search Amazon" value="laptop"
+    7.286 browser.submit           role=search name=site-search form=GET https://www.amazon.com/s/ref=nb_sb_noss
+    7.375 http.request             GET https://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3Daps&field-keywords=laptop
+    7.476 browser.navigation       https://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3Daps&field-keywords=laptop
+```
+
+Values typed into password, hidden or credential-like fields are never
+recorded in browser events. Recordings hold cookies, tokens and
 form data, so they are readable only by you and never leave the machine.
 
 ```

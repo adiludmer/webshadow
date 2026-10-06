@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/adiludmer/webshadow/internal/cdp"
 	"github.com/adiludmer/webshadow/internal/chromium"
 	"github.com/adiludmer/webshadow/internal/mitm"
 	"github.com/adiludmer/webshadow/internal/recording"
@@ -114,9 +115,10 @@ func recordSession(ctx context.Context, cfg browserConfig, stdout, stderr io.Wri
 		ln.Close()
 		return err
 	}
-	proxy := &mitm.Proxy{CA: ca, Store: store, Logf: func(format string, args ...any) {
+	logf := func(format string, args ...any) {
 		fmt.Fprintf(stderr, "webshadow: "+format+"\n", args...)
-	}}
+	}
+	proxy := &mitm.Proxy{CA: ca, Store: store, Logf: logf}
 	go proxy.Serve(ln)
 
 	addr := ln.Addr().String()
@@ -146,18 +148,31 @@ func recordSession(ctx context.Context, cfg browserConfig, stdout, stderr io.Wri
 		ProxyAddr:  addr,
 		SPKIHash:   ca.LeafSPKIHash(),
 		Headless:   cfg.headless,
-		StartURL:   cfg.startURL,
 		Log:        log,
 	})
 	if err != nil {
 		log.Close()
 		return abort(err)
 	}
-	return runRecording(ctx, cfg, rt, b, proxy, store, addr, profile, stdout)
+	rec, err := cdp.Start(ctx, b.DevToolsURL, store, logf)
+	if err == nil && cfg.startURL != "" {
+		// Opened only once the recorder is attached, so its first
+		// navigation is recorded.
+		err = rec.Open(ctx, cfg.startURL)
+	}
+	if err != nil {
+		b.Close()
+		if rec != nil {
+			rec.Close()
+		}
+		log.Close()
+		return abort(fmt.Errorf("connecting to Chromium DevTools: %w", err))
+	}
+	return runRecording(ctx, cfg, rt, b, rec, proxy, store, addr, profile, stdout)
 }
 
 // runRecording runs a launched session to its end and stops everything it owns.
-func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, b *chromium.Browser, proxy *mitm.Proxy, store *recording.Store, addr, profile string, stdout io.Writer) error {
+func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, b *chromium.Browser, rec *cdp.Recorder, proxy *mitm.Proxy, store *recording.Store, addr, profile string, stdout io.Writer) error {
 	uerr := store.UpdateSession(func(s *recording.Session) {
 		s.Proxy = &recording.ProxyInfo{Addr: addr, CAFingerprint: proxy.CA.Fingerprint()}
 		s.Browser = &recording.BrowserInfo{Version: b.Version, Executable: rt.Executable, Args: b.Args, Profile: profile}
@@ -165,7 +180,7 @@ func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, 
 	fmt.Fprintf(stdout, "Webshadow recorder started\n")
 	fmt.Fprintf(stdout, "Proxy: %s\n", addr)
 	fmt.Fprintf(stdout, "Browser: Chromium %s (%s)\n", productVersion(b.Version), rt.Source)
-	fmt.Fprintf(stdout, "CDP: %s\n", strings.TrimPrefix(b.DevToolsURL, "ws://"))
+	fmt.Fprintf(stdout, "CDP: connected\n")
 	fmt.Fprintf(stdout, "Session: %s\n", store.ID())
 	fmt.Fprintf(stdout, "Recording: %s\n", store.Dir())
 	fmt.Fprintf(stdout, "Press Ctrl-C or close the browser to stop.\n")
@@ -175,6 +190,8 @@ func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, 
 	case <-b.Done():
 	}
 	berr := b.Close()
+	// The browser is gone, so this only waits for queued events.
+	rerr := rec.Close()
 	perr := proxy.Close()
 	serr := store.Close()
 	s := store.Session()
@@ -182,7 +199,7 @@ func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, 
 	if cfg.keepProfile {
 		fmt.Fprintf(stdout, "Browser profile kept: %s\n", profile)
 	}
-	return errors.Join(uerr, berr, ignoreClosed(perr), serr)
+	return errors.Join(uerr, berr, rerr, ignoreClosed(perr), serr)
 }
 
 // productVersion turns "Chrome/157.0.8089.0" into "157.0.8089.0".

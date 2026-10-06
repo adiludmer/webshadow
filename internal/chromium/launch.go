@@ -61,7 +61,7 @@ func (o *LaunchOptions) Args() []string {
 		"--disable-default-apps",
 		"--disable-domain-reliability",
 		"--disable-client-side-phishing-detection",
-		"--disable-features=OptimizationHints,Translate,MediaRouter,DialMediaRouteProvider,AutofillServerCommunication,CertificateTransparencyComponentUpdater",
+		"--disable-features=OptimizationHints,Translate,MediaRouter,DialMediaRouteProvider,AutofillServerCommunication,CertificateTransparencyComponentUpdater,PasswordLeakDetection,NetworkTimeServiceQuerying,SpellcheckService",
 		"--metrics-recording-only",
 		"--password-store=basic",
 		"--use-mock-keychain",
@@ -162,7 +162,7 @@ func (t *tailWriter) String() string {
 // waitDevTools polls for the DevToolsActivePort file Chromium writes once
 // its debugging endpoint listens.
 func waitDevTools(ctx context.Context, profile string, exited <-chan struct{}) (int, string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	file := filepath.Join(profile, "DevToolsActivePort")
 	tick := time.NewTicker(50 * time.Millisecond)
@@ -175,7 +175,7 @@ func waitDevTools(ctx context.Context, profile string, exited <-chan struct{}) (
 		case <-exited:
 			return 0, "", errors.New("chromium exited before DevTools started")
 		case <-ctx.Done():
-			return 0, "", errors.New("chromium did not open DevTools within 30s")
+			return 0, "", errors.New("chromium did not open DevTools within 60s")
 		case <-tick.C:
 		}
 	}

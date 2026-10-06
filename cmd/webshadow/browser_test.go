@@ -56,7 +56,7 @@ func recordOnce(t *testing.T, home, exe string, origin *httptest.Server, loaded 
 	if err := <-done; err != nil {
 		t.Fatalf("session: %v\n%s", err, errOut.String())
 	}
-	for _, want := range []string{"Webshadow recorder started", "Proxy: 127.0.0.1:", "Browser: Chromium ", "CDP: 127.0.0.1:", "Session: rec_", "Recording complete: "} {
+	for _, want := range []string{"Webshadow recorder started", "Proxy: 127.0.0.1:", "Browser: Chromium ", "CDP: connected", "Session: rec_", "Recording complete: "} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q:\n%s", want, out.String())
 		}

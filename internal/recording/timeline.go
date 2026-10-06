@@ -1,9 +1,12 @@
 package recording
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 // Entry is one line of the merged timeline.
@@ -19,8 +22,9 @@ type Entry struct {
 // Timeline merges the HTTP and browser streams into one list ordered by
 // session time. Ties fall back to the record sequence numbers, so the same
 // recording always yields the same order whatever order its records are
-// read in.
-func Timeline(r *Recording) []Entry {
+// read in. Browser events that repeat the HTTP stream (CDP network events)
+// or are pure bookkeeping are left out unless all is set.
+func Timeline(r *Recording, all bool) []Entry {
 	var out []Entry
 	for i := range r.Exchanges {
 		ex := &r.Exchanges[i]
@@ -51,10 +55,11 @@ func Timeline(r *Recording) []Entry {
 	}
 	for i := range r.Events {
 		ev := &r.Events[i]
-		out = append(out, Entry{
-			T: ev.Timestamp.T, Seq: ev.Seq, Kind: "browser." + ev.Type,
-			Text: ev.PageURL,
-		})
+		kind, text, shown := describeEvent(ev)
+		if !shown && !all {
+			continue
+		}
+		out = append(out, Entry{T: ev.Timestamp.T, Seq: ev.Seq, Kind: kind, Text: text})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]
@@ -77,4 +82,118 @@ func WriteTimeline(w io.Writer, entries []Entry) error {
 		}
 	}
 	return nil
+}
+
+// describeEvent names a browser event for the timeline and says whether
+// it is shown by default.
+func describeEvent(ev *BrowserEvent) (kind, text string, shown bool) {
+	switch ev.Type {
+	case "Page.frameNavigated":
+		var p struct {
+			Frame struct {
+				ParentID string `json:"parentId"`
+			} `json:"frame"`
+		}
+		json.Unmarshal(ev.Payload, &p)
+		if p.Frame.ParentID != "" {
+			return "browser.frame-navigation", ev.PageURL, false
+		}
+		return "browser.navigation", ev.PageURL, true
+	case "Page.navigatedWithinDocument":
+		return "browser.navigation", ev.PageURL + " (same document)", true
+	case "Page.frameRequestedNavigation":
+		var p struct {
+			Reason string `json:"reason"`
+			URL    string `json:"url"`
+		}
+		json.Unmarshal(ev.Payload, &p)
+		// A frame's first load and about: documents are page plumbing, not
+		// something the user asked for.
+		shown := p.Reason != "initialFrameNavigation" && !strings.HasPrefix(p.URL, "about:")
+		return "browser.navigation-request", strings.TrimSpace(p.Reason + " " + p.URL), shown
+	case "Page.domContentEventFired":
+		return "browser.domcontentloaded", ev.PageURL, false
+	case "Page.loadEventFired":
+		return "browser.load", ev.PageURL, true
+	case "Target.targetCreated", "Target.targetDestroyed", "Target.targetInfoChanged":
+		var p struct {
+			TargetInfo struct {
+				Type  string `json:"type"`
+				Title string `json:"title"`
+			} `json:"targetInfo"`
+		}
+		json.Unmarshal(ev.Payload, &p)
+		name := map[string]string{
+			"Target.targetCreated":     "browser.target-created",
+			"Target.targetDestroyed":   "browser.target-destroyed",
+			"Target.targetInfoChanged": "browser.target-changed",
+		}[ev.Type]
+		shown := ev.Type != "Target.targetInfoChanged" && p.TargetInfo.Type == "page"
+		return name, strings.TrimSpace(p.TargetInfo.Type + " " + ev.PageURL), shown
+	}
+	if action, ok := strings.CutPrefix(ev.Type, "interaction."); ok {
+		return "browser." + action, describeInteraction(ev.Payload), true
+	}
+	return "browser." + ev.Type, ev.PageURL, false
+}
+
+// describeInteraction summarizes an instrumented interaction, such as
+// `role=searchbox name=field-keywords value="laptop"`.
+func describeInteraction(payload json.RawMessage) string {
+	var p struct {
+		Target *struct {
+			Role        string `json:"role"`
+			Tag         string `json:"tag"`
+			Name        string `json:"name"`
+			Label       string `json:"label"`
+			Placeholder string `json:"placeholder"`
+			Text        string `json:"text"`
+			Href        string `json:"href"`
+		} `json:"target"`
+		Value    *string `json:"value"`
+		Redacted bool    `json:"redacted"`
+		Checked  *bool   `json:"checked"`
+		Action   string  `json:"action"`
+		Method   string  `json:"method"`
+	}
+	if json.Unmarshal(payload, &p) != nil {
+		return ""
+	}
+	var parts []string
+	add := func(k, v string) {
+		if v != "" {
+			parts = append(parts, k+"="+v)
+		}
+	}
+	if t := p.Target; t != nil {
+		role := t.Role
+		if role == "" {
+			role = t.Tag
+		}
+		add("role", role)
+		add("name", t.Name)
+		label := t.Label
+		if label == "" {
+			label = t.Placeholder
+		}
+		if label != "" {
+			add("label", strconv.Quote(label))
+		}
+		if t.Text != "" {
+			add("text", strconv.Quote(t.Text))
+		}
+		add("href", t.Href)
+	}
+	switch {
+	case p.Redacted:
+		parts = append(parts, "value=<redacted>")
+	case p.Value != nil:
+		add("value", strconv.Quote(*p.Value))
+	case p.Checked != nil:
+		add("checked", strconv.FormatBool(*p.Checked))
+	}
+	if p.Action != "" {
+		add("form", p.Method+" "+p.Action)
+	}
+	return strings.Join(parts, " ")
 }

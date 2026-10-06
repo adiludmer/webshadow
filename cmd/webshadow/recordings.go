@@ -14,7 +14,9 @@ const recordingsUsage = `usage: webshadow recordings <command> [arguments]
 Commands:
   list               list recorded sessions
   show <id>          summarize a session
-  timeline <id>      print HTTP and browser events in time order
+  timeline [-all] <id>
+                     print HTTP and browser events in time order; -all adds
+                     CDP network and bookkeeping events
   delete <id>        delete a session and everything it recorded
 `
 
@@ -30,6 +32,10 @@ func runRecordings(args []string, stdout, stderr io.Writer) int {
 	}
 	root := filepath.Join(home, "recordings")
 	cmd, rest := args[0], args[1:]
+	all := false
+	if cmd == "timeline" && len(rest) > 0 && (rest[0] == "-all" || rest[0] == "--all") {
+		all, rest = true, rest[1:]
+	}
 	switch cmd {
 	case "-h", "-help", "--help", "help":
 		fmt.Fprint(stdout, recordingsUsage)
@@ -70,7 +76,7 @@ func runRecordings(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if cmd == "timeline" {
-		if err := recording.WriteTimeline(stdout, recording.Timeline(r)); err != nil {
+		if err := recording.WriteTimeline(stdout, recording.Timeline(r, all)); err != nil {
 			fmt.Fprintf(stderr, "webshadow recordings: %v\n", err)
 			return 1
 		}
