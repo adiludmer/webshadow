@@ -1,6 +1,43 @@
 # webshadow
 Agent-friendly web generator
 
+## Recording a browser session
+
+`webshadow browser` launches an isolated Chromium that sends all its
+traffic through a local recording proxy, and records the session until you
+press Ctrl-C or close the browser:
+
+```
+make release                     # bin/webshadow with Chromium embedded
+bin/webshadow browser https://www.amazon.com/
+```
+
+HTTPS is decrypted with a local Webshadow CA (`~/.webshadow/ca/`). Only the
+recording browser trusts it, through `--ignore-certificate-errors-spki-list`;
+the system trust store is never changed, and the proxy still verifies every
+site's real certificate. Each session gets a fresh browser profile, deleted
+when it stops (`-keep-profile` keeps it).
+
+A recording is a directory under `~/.webshadow/recordings/<session>/`:
+`session.json`, `http.jsonl` (one request/response per line),
+`browser.jsonl` and `bodies/`. Recordings hold cookies, tokens and
+form data, so they are readable only by you and never leave the machine.
+
+```
+webshadow recordings list
+webshadow recordings show <id>
+webshadow recordings timeline <id>
+webshadow recordings delete <id>
+```
+
+`make release` embeds the open-source Chromium snapshot pinned in
+`internal/chromium/chromium.lock` for linux/amd64, darwin/amd64,
+darwin/arm64 or windows/amd64, and unpacks it to
+`~/.webshadow/runtime/chromium/` on first run. A plain `make build` has no
+embedded Chromium; it uses `-chromium PATH`, `WEBSHADOW_CHROMIUM`, or a
+Chromium or Chrome found on the system. Set `WEBSHADOW_HOME` to keep
+everything somewhere other than `~/.webshadow`.
+
 ## HAR benchmark
 
 `webshadow bench` measures how well an agent turns a recorded browser session

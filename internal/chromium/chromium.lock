@@ -1,0 +1,8 @@
+# Pinned open-source Chromium snapshots embedded in release builds.
+# Fields: GOOS GOARCH snapshot-platform revision zip sha256
+# Source: https://storage.googleapis.com/chromium-browser-snapshots/<platform>/<revision>/<zip>
+# Pinned 2026-10-06 (Linux_x64 1712200 reports Chromium 157.0.8089.0).
+linux   amd64 Linux_x64 1712200 chrome-linux.zip c48d21350f1beece0b7061be2760eb60a97e3e2771a5b08f2920eff9654fa60c
+darwin  amd64 Mac       1712203 chrome-mac.zip   8cc5f6b0a9915eaafac2eaf127dbb3e463788747c47ba2e248c82a949857efcd
+darwin  arm64 Mac_Arm   1712208 chrome-mac.zip   9ab55d86022d22ac3ffa2d69a7b8575bb14c693fcd7dc3e0b4d13aed97cfa162
+windows amd64 Win_x64   1712109 chrome-win.zip   39788427a53084de21aa1fd2e1cecfa5e8bc8978ce323e61fcbc232559e749ef
