@@ -334,6 +334,10 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// ReadBody reads a stored body and undoes its content coding, for passes
+// that need the bytes of a body normalization left opaque.
+func ReadBody(r *recording.Recording, b *recording.Body) ([]byte, error) { return readBody(r, b) }
+
 // readBody reads a stored body and undoes its content coding. Recordings
 // keep the bytes as they crossed the wire, coding included.
 func readBody(r *recording.Recording, b *recording.Body) ([]byte, error) {

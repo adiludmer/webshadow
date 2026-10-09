@@ -174,6 +174,9 @@ const (
 	PartSetCookie = "set-cookie"
 	PartBody      = "body"
 	PartLocation  = "location"
+	// PartText is a value found inside an unparsed text body, such as an
+	// HTML page, by exact token match. It has no structural path.
+	PartText = "text"
 )
 
 // Location is where a value was observed inside an exchange. Path is the
