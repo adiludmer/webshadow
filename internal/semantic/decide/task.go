@@ -18,6 +18,7 @@ const (
 	TypeClassifyFamily = "classify_family"
 	TypeNameEntity     = "name_entity"
 	TypeClassifyPrereq = "classify_prereq"
+	TypeNameOperation  = "name_operation"
 )
 
 // ChoiceUnknown is offered by every task: the model's way to abstain.

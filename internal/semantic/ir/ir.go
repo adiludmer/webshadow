@@ -52,18 +52,20 @@ type HypothesisKind string
 
 // Kinds of hypothesis, one per decision task family in the spec.
 const (
-	KindFamilyRole   HypothesisKind = "family_role"
-	KindEntity       HypothesisKind = "entity"
-	KindEntityName   HypothesisKind = "entity_name"
-	KindIdentity     HypothesisKind = "identity"
-	KindRelation     HypothesisKind = "relation"
-	KindPrerequisite HypothesisKind = "prerequisite"
-	KindOperation    HypothesisKind = "operation"
+	KindFamilyRole    HypothesisKind = "family_role"
+	KindEntity        HypothesisKind = "entity"
+	KindEntityName    HypothesisKind = "entity_name"
+	KindIdentity      HypothesisKind = "identity"
+	KindRelation      HypothesisKind = "relation"
+	KindPrerequisite  HypothesisKind = "prerequisite"
+	KindOperation     HypothesisKind = "operation"
+	KindOperationName HypothesisKind = "operation_name"
 )
 
 // Kinds lists every valid kind.
 var Kinds = []HypothesisKind{
 	KindFamilyRole, KindEntity, KindEntityName, KindIdentity, KindRelation, KindPrerequisite, KindOperation,
+	KindOperationName,
 }
 
 // Valid reports whether k is a known kind.

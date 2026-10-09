@@ -60,7 +60,10 @@ type PrereqCandidate struct {
 	// Keys are the request locations the state arrived at, such as
 	// "request.cookie.session-id"; From the response locations it left.
 	Keys, From []string
-	Edge       string // sequence edge id
+	// Always lists the keys that carried the state on every consumer
+	// request.
+	Always []string
+	Edge   string // sequence edge id
 	// Matches counts consumer requests that carried the state; Of counts
 	// the consumer's requests in all.
 	Matches, Of int
@@ -97,6 +100,7 @@ func Prerequisites(in *input.Input, consumers map[string]bool) []PrereqCandidate
 		from  map[string]bool
 		ex    map[string]bool
 		scope map[string]bool
+		keyM  map[string]int
 	}
 	groups := map[string]*group{}
 	for _, e := range in.Sequences {
@@ -116,11 +120,12 @@ func Prerequisites(in *input.Input, consumers map[string]bool) []PrereqCandidate
 						Consumer: e.ToFamily, Producer: e.FromFamily, Carrier: carrier, Edge: e.ID,
 						Of: e.ToObservations, WithoutPredecessor: e.WithoutPredecessor, Sessions: e.SessionsWithBoth,
 					},
-					keys: map[string]bool{}, from: map[string]bool{}, ex: map[string]bool{}, scope: map[string]bool{},
+					keys: map[string]bool{}, from: map[string]bool{}, ex: map[string]bool{}, scope: map[string]bool{}, keyM: map[string]int{},
 				}
 				groups[key] = g
 			}
 			g.keys[fl.To.String()] = true
+			g.keyM[fl.To.String()] = max(g.keyM[fl.To.String()], fl.Matches)
 			g.from[fl.From.String()] = true
 			g.c.Matches = max(g.c.Matches, fl.Matches)
 			for _, x := range fl.Examples {
@@ -143,6 +148,11 @@ func Prerequisites(in *input.Input, consumers map[string]bool) []PrereqCandidate
 	for _, g := range groups {
 		c := &g.c
 		c.Keys, c.From, c.Examples = sortedKeys(g.keys), sortedKeys(g.from), sortedKeys(g.ex)
+		for _, k := range c.Keys {
+			if g.keyM[k] >= c.Of {
+				c.Always = append(c.Always, k)
+			}
+		}
 		c.Scope = ScopeUnknown
 		if len(g.scope) == 1 {
 			for s := range g.scope {

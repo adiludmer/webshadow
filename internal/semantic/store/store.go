@@ -15,6 +15,7 @@
 package store
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,7 +39,7 @@ const Latest = "latest"
 
 // RunFiles are the ledgers every run directory holds, empty until a stage
 // writes to them.
-var RunFiles = []string{"decisions.jsonl", "hypotheses.jsonl", "verification.jsonl", "prerequisites.jsonl"}
+var RunFiles = []string{"decisions.jsonl", "hypotheses.jsonl", "verification.jsonl", "prerequisites.jsonl", "merges.jsonl"}
 
 var revisionPattern = regexp.MustCompile(`^r[0-9]{4,}$`)
 
@@ -222,6 +224,43 @@ type RunManifest struct {
 	Revision string `json:"revision"`
 	Changed  bool   `json:"changed"`
 	Counts   Counts `json:"counts"`
+	// Coverage is how much of the recorded browsing the operations cover.
+	Coverage Coverage `json:"coverage"`
+	// ReusedFrom names the earlier run whose unchanged decisions this run
+	// repeated instead of asking the model again.
+	ReusedFrom string `json:"reused_from,omitempty"`
+}
+
+// Coverage scores operations against the browsing they came from: of the
+// episodes whose traffic includes a family with a standing role other than
+// background or presentation, how many include an operation's family.
+type Coverage struct {
+	Episodes int     `json:"episodes"`
+	Relevant int     `json:"relevant"`
+	Covered  int     `json:"covered"`
+	Score    float64 `json:"score"`
+	// Uncovered lists the relevant episodes no operation covers.
+	Uncovered []string `json:"uncovered"`
+}
+
+// Patch is how a run changed the IR: the nodes it added, changed and
+// removed, the hypotheses whose status moved, and the contradictions among
+// them, so no prior assertion changes silently.
+type Patch struct {
+	Prior          string         `json:"prior,omitempty"`
+	Revision       string         `json:"revision"`
+	Added          []string       `json:"added"`
+	Changed        []string       `json:"changed"`
+	Removed        []string       `json:"removed"`
+	StatusChanges  []StatusChange `json:"status_changes"`
+	Contradictions []StatusChange `json:"contradictions"`
+}
+
+// StatusChange is one hypothesis whose status moved.
+type StatusChange struct {
+	Hypothesis string              `json:"hypothesis"`
+	From       ir.HypothesisStatus `json:"from"`
+	To         ir.HypothesisStatus `json:"to"`
 }
 
 // Counts sizes a run.
@@ -238,6 +277,8 @@ type Counts struct {
 	Operations     int `json:"operations"`
 	// Prerequisites counts the state prerequisites the run proposed.
 	Prerequisites int `json:"prerequisites"`
+	// Reused counts decisions repeated from an earlier run.
+	Reused int `json:"reused"`
 }
 
 // Run is one analysis run's directory.
@@ -298,6 +339,74 @@ func (r *Run) WriteManifest(m RunManifest) error {
 		return err
 	}
 	return input.WriteFileAtomic(filepath.Join(r.Dir, "manifest.json"), data)
+}
+
+// Runs returns the ids of the complete runs, oldest first. Run ids start
+// with their start time, so name order is time order.
+func (s *Store) Runs() ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(s.Root, "runs"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if _, err := os.Stat(filepath.Join(s.Root, "runs", e.Name(), "manifest.json")); err == nil {
+			out = append(out, e.Name())
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// ReadLedger decodes every line of one of a run's ledgers into a new T.
+func ReadLedger[T any](s *Store, run, ledger string) ([]T, error) {
+	if strings.ContainsAny(run, `/\`) || strings.ContainsAny(ledger, `/\`) {
+		return nil, fmt.Errorf("invalid run %q or ledger %q", run, ledger)
+	}
+	data, err := os.ReadFile(filepath.Join(s.Root, "runs", run, ledger))
+	if err != nil {
+		return nil, err
+	}
+	var out []T
+	for i, line := range bytes.Split(data, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var v T
+		if err := json.Unmarshal(line, &v); err != nil {
+			return nil, fmt.Errorf("%s/%s line %d: %w", run, ledger, i+1, err)
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// ReadJSON decodes a run file such as patch.json.
+func ReadJSON[T any](s *Store, run, name string) (*T, error) {
+	if strings.ContainsAny(run, `/\`) || strings.ContainsAny(name, `/\`) {
+		return nil, fmt.Errorf("invalid run %q or file %q", run, name)
+	}
+	data, err := os.ReadFile(filepath.Join(s.Root, "runs", run, name))
+	if err != nil {
+		return nil, err
+	}
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		return nil, fmt.Errorf("%s/%s: %w", run, name, err)
+	}
+	return &v, nil
+}
+
+// WriteJSON stores a run file such as patch.json atomically.
+func (r *Run) WriteJSON(name string, v any) error {
+	data, err := ir.EncodeJSON(v)
+	if err != nil {
+		return err
+	}
+	return input.WriteFileAtomic(filepath.Join(r.Dir, name), data)
 }
 
 // LoadRun reads a run's manifest by id.
