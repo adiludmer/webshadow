@@ -13,6 +13,8 @@ Commands:
   browser      record a browsing session through an isolated Chromium
   recordings   list, inspect and delete recorded sessions
   cluster      group recorded requests into families and sequence evidence
+  analyze      turn clustering evidence into an Agent Interface IR revision
+  ir           inspect Agent Interface IR revisions
   bench        run and inspect the HAR benchmark
 `
 
@@ -33,6 +35,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runRecordings(args[1:], stdout, stderr)
 	case "cluster":
 		return runCluster(args[1:], stdout, stderr)
+	case "analyze":
+		return runAnalyze(args[1:], stdout, stderr)
+	case "ir":
+		return runIR(args[1:], stdout, stderr)
 	case "bench":
 		return runBench(args[1:], stdout, stderr)
 	case "-h", "-help", "--help", "help":
