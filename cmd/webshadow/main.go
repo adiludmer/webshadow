@@ -12,6 +12,7 @@ const usage = `usage: webshadow <command> [arguments]
 Commands:
   browser      record a browsing session through an isolated Chromium
   recordings   list, inspect and delete recorded sessions
+  cluster      group recorded requests into families and sequence evidence
   bench        run and inspect the HAR benchmark
 `
 
@@ -30,6 +31,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runBrowser(args[1:], stdout, stderr)
 	case "recordings":
 		return runRecordings(args[1:], stdout, stderr)
+	case "cluster":
+		return runCluster(args[1:], stdout, stderr)
 	case "bench":
 		return runBench(args[1:], stdout, stderr)
 	case "-h", "-help", "--help", "help":

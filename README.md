@@ -51,6 +51,27 @@ embedded Chromium; it uses `-chromium PATH`, `WEBSHADOW_CHROMIUM`, or a
 Chromium or Chrome found on the system. Set `WEBSHADOW_HOME` to keep
 everything somewhere other than `~/.webshadow`.
 
+## Clustering recorded requests
+
+`webshadow cluster` groups the requests of one or more recordings into
+request families (one per method, host, path template, query shape and body
+shape, with changing ids as slots), and records the evidence around them:
+values shared between families, each session's ordered trace, episodes
+around clicks, submits and navigations, which families came before which,
+and which values flowed from a response into a later request, cookies
+included. It is fully deterministic and assigns no meanings: the same
+recordings always give the same output, byte for byte.
+
+```
+webshadow cluster <id> [<id>...]
+webshadow cluster -yaml -out /tmp/shop <id> <id>
+```
+
+Output goes to `~/.webshadow/recordings/clusters/<result id>/`:
+`families.json`, `links.json`, `traces.json`, `episodes.json`,
+`sequences.json`, `evidence.json` (a bounded per-family summary for a later
+reader, with static assets collapsed to counts) and `manifest.json`.
+
 ## HAR benchmark
 
 `webshadow bench` measures how well an agent turns a recorded browser session
