@@ -37,7 +37,7 @@ const Latest = "latest"
 
 // RunFiles are the ledgers every run directory holds, empty until a stage
 // writes to them.
-var RunFiles = []string{"decisions.jsonl", "hypotheses.jsonl", "verification.jsonl"}
+var RunFiles = []string{"decisions.jsonl", "hypotheses.jsonl", "verification.jsonl", "prerequisites.jsonl"}
 
 var revisionPattern = regexp.MustCompile(`^r[0-9]{4,}$`)
 
@@ -236,6 +236,8 @@ type Counts struct {
 	Hypotheses     int `json:"hypotheses"`
 	Entities       int `json:"entities"`
 	Operations     int `json:"operations"`
+	// Prerequisites counts the state prerequisites the run proposed.
+	Prerequisites int `json:"prerequisites"`
 }
 
 // Run is one analysis run's directory.

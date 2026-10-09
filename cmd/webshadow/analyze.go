@@ -100,6 +100,8 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	printRoles(stdout, res.IR)
 	fmt.Fprintf(stdout, "Entities: %d\n", m.Counts.Entities)
 	printEntities(stdout, res.IR)
+	fmt.Fprintf(stdout, "Prerequisites: %d proposed\n", m.Counts.Prerequisites)
+	printPrerequisites(stdout, res.IR)
 	fmt.Fprintf(stdout, "Operations: %d, hypotheses: %d\n", m.Counts.Operations, m.Counts.Hypotheses)
 	fmt.Fprintf(stdout, "Run: %s\n", filepath.Join(st.Root, "runs", res.Run))
 	return 0
@@ -190,6 +192,24 @@ func printEntities(w io.Writer, x *ir.InterfaceIR) {
 		for _, r := range e.Relations {
 			fmt.Fprintf(w, "      %s %s (%s, %s) [%s]\n", r.Kind, names[r.Target], r.Target, r.Cardinality, status[r.Hypothesis])
 		}
+	}
+}
+
+// printPrerequisites counts the standing prerequisite hypotheses by kind.
+func printPrerequisites(w io.Writer, x *ir.InterfaceIR) {
+	counts := map[string]int{}
+	for _, h := range x.Hypotheses {
+		if h.Kind == ir.KindPrerequisite && h.Status != ir.StatusSuperseded && h.Status != ir.StatusRejected {
+			counts[h.CandidateID]++
+		}
+	}
+	kinds := make([]string, 0, len(counts))
+	for k := range counts {
+		kinds = append(kinds, k)
+	}
+	sort.Strings(kinds)
+	for _, k := range kinds {
+		fmt.Fprintf(w, "  %-24s %d\n", k, counts[k])
 	}
 }
 
