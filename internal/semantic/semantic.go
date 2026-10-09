@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/adiludmer/webshadow/internal/semantic/candidates"
 	"github.com/adiludmer/webshadow/internal/semantic/decide"
 	"github.com/adiludmer/webshadow/internal/semantic/input"
 	"github.com/adiludmer/webshadow/internal/semantic/ir"
@@ -71,21 +72,32 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	hyps := patchHypotheses(next, roles.hypotheses)
-	if err := writeLedgers(run, roles, hyps); err != nil {
+	ents, err := discoverEntities(ctx, in, opts.Decider, settledAside(roles.hypotheses))
+	if err != nil {
 		return nil, err
 	}
-	m.Counts.Tasks = roles.tasks
-	for _, d := range roles.decisions {
-		switch {
-		case d.Status == StatusSettled:
-			m.Counts.Settled++
-		case d.Status == decide.StatusUnresolved:
-			m.Counts.Unresolved++
-		case d.ChoiceID == decide.ChoiceUnknown:
-			m.Counts.Unknown++
-		default:
-			m.Counts.Decided++
+	stages := []outcome{roles, ents.outcome}
+	var hyps []ir.Hypothesis
+	for _, st := range stages {
+		hyps = append(hyps, patchHypotheses(next, st.hypotheses)...)
+	}
+	patchEntities(next, ents.entities, ents.dropped)
+	if err := writeLedgers(run, stages, hyps); err != nil {
+		return nil, err
+	}
+	for _, st := range stages {
+		m.Counts.Tasks += st.tasks
+		for _, d := range st.decisions {
+			switch {
+			case d.Status == StatusSettled:
+				m.Counts.Settled++
+			case d.Status == decide.StatusUnresolved:
+				m.Counts.Unresolved++
+			case d.ChoiceID == decide.ChoiceUnknown:
+				m.Counts.Unknown++
+			default:
+				m.Counts.Decided++
+			}
 		}
 	}
 
@@ -116,6 +128,24 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 	}, nil
 }
 
+// settledAside lists the families whose role hypothesis stands as
+// background or presentation: their lists are not entities.
+func settledAside(roles []ir.Hypothesis) map[string]bool {
+	out := map[string]bool{}
+	for _, h := range roles {
+		if h.Status != ir.StatusMechanicallySupported {
+			continue
+		}
+		if h.CandidateID == candidates.RoleBackground || h.CandidateID == candidates.RolePresentation {
+			for _, s := range h.SubjectRefs {
+				_, id, _ := ir.SplitRef(s)
+				out[id] = true
+			}
+		}
+	}
+	return out
+}
+
 // carryForward starts the next revision from the prior one, adding the
 // clustering result being analysed to its evidence. Later stages patch it;
 // nothing is regenerated from scratch.
@@ -123,16 +153,19 @@ func carryForward(prior *ir.InterfaceIR, evidence string) *ir.InterfaceIR {
 	next := *prior
 	next.Evidence = append(append([]string{}, prior.Evidence...), evidence)
 	next.Hypotheses = append([]ir.HypothesisRef{}, prior.Hypotheses...)
+	next.Entities = append([]ir.Entity{}, prior.Entities...)
 	return &next
 }
 
 // writeLedgers appends the run's decisions, the hypotheses it proposed and
 // their checks to the run directory. Hypotheses and verifications carry no
 // timing or run ids, so the same evidence and model give the same lines.
-func writeLedgers(run *store.Run, roles roleOutcome, hyps []ir.Hypothesis) error {
-	for _, d := range roles.decisions {
-		if err := run.Append("decisions.jsonl", d); err != nil {
-			return err
+func writeLedgers(run *store.Run, stages []outcome, hyps []ir.Hypothesis) error {
+	for _, st := range stages {
+		for _, d := range st.decisions {
+			if err := run.Append("decisions.jsonl", d); err != nil {
+				return err
+			}
 		}
 	}
 	for _, h := range hyps {
@@ -140,9 +173,11 @@ func writeLedgers(run *store.Run, roles roleOutcome, hyps []ir.Hypothesis) error
 			return err
 		}
 	}
-	for _, v := range roles.verifications {
-		if err := run.Append("verification.jsonl", v); err != nil {
-			return err
+	for _, st := range stages {
+		for _, v := range st.verifications {
+			if err := run.Append("verification.jsonl", v); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

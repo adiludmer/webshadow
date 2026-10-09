@@ -94,10 +94,13 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	} else {
 		fmt.Fprintf(stdout, "Revision: %s (unchanged)\n", res.Revision)
 	}
-	fmt.Fprintf(stdout, "Family roles: %d settled by rule, %d asked of %s: %d decided, %d unknown, %d unresolved\n",
+	fmt.Fprintf(stdout, "Decisions: %d settled by rule, %d asked of %s: %d decided, %d unknown, %d unresolved\n",
 		m.Counts.Settled, m.Counts.Tasks, m.Model, m.Counts.Decided, m.Counts.Unknown, m.Counts.Unresolved)
+	fmt.Fprintln(stdout, "Family roles:")
 	printRoles(stdout, res.IR)
-	fmt.Fprintf(stdout, "Entities: %d, operations: %d, hypotheses: %d\n", m.Counts.Entities, m.Counts.Operations, m.Counts.Hypotheses)
+	fmt.Fprintf(stdout, "Entities: %d\n", m.Counts.Entities)
+	printEntities(stdout, res.IR)
+	fmt.Fprintf(stdout, "Operations: %d, hypotheses: %d\n", m.Counts.Operations, m.Counts.Hypotheses)
 	fmt.Fprintf(stdout, "Run: %s\n", filepath.Join(st.Root, "runs", res.Run))
 	return 0
 }
@@ -167,6 +170,26 @@ func printRoles(w io.Writer, x *ir.InterfaceIR) {
 	sort.Strings(roles)
 	for _, r := range roles {
 		fmt.Fprintf(w, "  %-16s %d\n", r, counts[r])
+	}
+}
+
+// printEntities lists the entities with the status of the hypothesis
+// behind each, and their relations.
+func printEntities(w io.Writer, x *ir.InterfaceIR) {
+	status := map[string]ir.HypothesisStatus{}
+	for _, h := range x.Hypotheses {
+		status[h.ID] = h.Status
+	}
+	names := map[string]string{}
+	for _, e := range x.Entities {
+		names[e.ID] = e.Name
+	}
+	for _, e := range x.Entities {
+		fmt.Fprintf(w, "  %s  %-20s [%s]  %d identity locations, %d fields\n",
+			e.ID, e.Name, status[e.Hypothesis], len(e.Identity), len(e.Fields))
+		for _, r := range e.Relations {
+			fmt.Fprintf(w, "      %s %s (%s, %s) [%s]\n", r.Kind, names[r.Target], r.Target, r.Cardinality, status[r.Hypothesis])
+		}
 	}
 }
 
@@ -262,9 +285,7 @@ func printIR(w io.Writer, x *ir.InterfaceIR) {
 	fmt.Fprintf(w, ", schema %s\n", x.SchemaVersion)
 	fmt.Fprintf(w, "Evidence: %s\n", strings.Join(x.Evidence, ", "))
 	fmt.Fprintf(w, "\nEntities: %d\n", len(x.Entities))
-	for _, e := range x.Entities {
-		fmt.Fprintf(w, "  %s  %s  %d fields, %d relations\n", e.ID, e.Name, len(e.Fields), len(e.Relations))
-	}
+	printEntities(w, x)
 	fmt.Fprintf(w, "\nOperations: %d\n", len(x.Operations))
 	for _, op := range x.Operations {
 		fmt.Fprintf(w, "  %s  %s  [%s]  %d families\n", op.ID, op.Name, op.Status, len(op.SourceFamilies))
