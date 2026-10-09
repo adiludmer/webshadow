@@ -70,6 +70,9 @@ type Decision struct {
 	EvidenceRefs []string  `json:"evidence_refs,omitempty"`
 	Unresolved   string    `json:"unresolved,omitempty"`
 	Attempts     []Attempt `json:"attempts"`
+	// Reused names the run whose decision this one repeats: the same task,
+	// prompt and model, so the model was not asked again.
+	Reused string `json:"reused,omitempty"`
 }
 
 // Decider asks a model closed-choice questions.
@@ -77,6 +80,12 @@ type Decider struct {
 	Model  model.Model
 	Info   ModelInfo
 	Params Params
+	// Prior holds earlier decisions by task id. A decided task whose
+	// content, prompt and model are unchanged is answered from it, so a
+	// run over mostly unchanged evidence only asks about what changed.
+	Prior map[string]Decision
+	// PriorRun names the run Prior came from.
+	PriorRun string
 	// templates caches each task type's prompt.
 	templates map[string]*Template
 }
@@ -108,6 +117,14 @@ func (d *Decider) Decide(ctx context.Context, task Task) (Decision, error) {
 	dec := Decision{
 		TaskID: task.ID, TaskType: task.Type, Subject: task.Subject, InputHash: task.Hash(),
 		Prompt: tmpl.ID, Model: d.Info, Params: d.Params, Status: StatusUnresolved, Attempts: []Attempt{},
+	}
+	if p, ok := d.Prior[task.ID]; ok && p.Status == StatusDecided && p.InputHash == dec.InputHash &&
+		p.Prompt == dec.Prompt && p.Model == d.Info && p.Params == d.Params {
+		if p.Reused == "" {
+			p.Reused = d.PriorRun
+		}
+		p.Attempts = []Attempt{}
+		return p, nil
 	}
 	chars := 0
 	for _, m := range msgs {

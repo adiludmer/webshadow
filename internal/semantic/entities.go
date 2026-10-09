@@ -32,6 +32,8 @@ type entityOutcome struct {
 	entities []ir.Entity
 	// dropped lists entities this run found to be no object at all.
 	dropped map[string]bool
+	// forOperations describes the kept entities for operation synthesis.
+	forOperations []candidates.OpEntity
 }
 
 // discoverEntities proposes the entities, their identities and the
@@ -98,6 +100,13 @@ func discoverEntities(ctx context.Context, in *input.Input, d *decide.Decider, s
 			ent.Name = strings.TrimPrefix(e.ID, ir.RefEntity+":")
 		}
 		kept[e.ID] = &ent
+		oe := candidates.OpEntity{ID: e.ID, Name: ent.Name, Verified: h.Status == ir.StatusMechanicallySupported}
+		if e.Kind == candidates.EntityKeyed {
+			oe.Consumers, oe.Producers = e.Key.Consumers, e.Key.Producers
+		} else {
+			oe.Containers = e.Subjects
+		}
+		out.forOperations = append(out.forOperations, oe)
 	}
 
 	for _, r := range rels {

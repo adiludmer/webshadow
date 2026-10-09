@@ -16,10 +16,12 @@ import (
 	"github.com/adiludmer/webshadow/internal/semantic/decide"
 	"github.com/adiludmer/webshadow/internal/semantic/input"
 	"github.com/adiludmer/webshadow/internal/semantic/ir"
+	"github.com/adiludmer/webshadow/internal/semantic/report"
 	"github.com/adiludmer/webshadow/internal/semantic/store"
 )
 
-const analyzeUsage = `usage: webshadow analyze [-store dir] [-model mock|<id>] [-models models.yaml] <cluster id or dir>
+const analyzeUsage = `usage: webshadow analyze [-store dir] [-model mock|<id>] [-models models.yaml] [-reuse=true] <cluster id or dir>
+       webshadow analyze report [-store dir] [-json] [run id|latest]
        webshadow analyze redact [-gz] <cluster id or dir> <out dir>
 
 analyze reads the output of webshadow cluster and commits a new revision of
@@ -32,6 +34,14 @@ them. Analysing the same evidence twice leaves the IR unchanged.
 by rule: "mock" (the default) picks each task's first structural choice
 offline; any other id is an entry in the -models file, such as a local
 GGUF model run through llama.cpp.
+
+-reuse repeats the previous run's answers to tasks whose evidence, prompt
+and model are unchanged, so only new or changed families are asked.
+
+report prints what a run concluded: operations, entities, coverage of the
+recorded browsing, hypotheses by status, undecided tasks, rejected claims,
+changes to the IR and model cost. Every run also writes it as JSON to
+reports/<run id>.json.
 
 redact writes a copy of a cluster output with those values already
 replaced, for sharing it or keeping it as a test fixture.
@@ -47,12 +57,16 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "redact" {
 		return runAnalyzeRedact(args[1:], stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "report" {
+		return runAnalyzeReport(args[1:], stdout, stderr)
+	}
 	fs := flag.NewFlagSet("analyze", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, analyzeUsage) }
 	storeDir := fs.String("store", "", "analysis directory")
 	modelID := fs.String("model", decide.MockID, "model that answers decision tasks")
 	modelsPath := fs.String("models", "models.yaml", "models file")
+	reuse := fs.Bool("reuse", true, "repeat the previous run's answers to unchanged tasks")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -77,7 +91,7 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	st := store.Open(analysisRoot(root, *storeDir))
-	res, err := semantic.Analyze(ctx, clusterDir(root, fs.Arg(0)), semantic.Options{Store: st, Decider: decider})
+	res, err := semantic.Analyze(ctx, clusterDir(root, fs.Arg(0)), semantic.Options{Store: st, Decider: decider, Reuse: *reuse})
 	if err != nil {
 		fmt.Fprintf(stderr, "webshadow analyze: %v\n", err)
 		return 1
@@ -103,7 +117,69 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Prerequisites: %d proposed\n", m.Counts.Prerequisites)
 	printPrerequisites(stdout, res.IR)
 	fmt.Fprintf(stdout, "Operations: %d, hypotheses: %d\n", m.Counts.Operations, m.Counts.Hypotheses)
+	fmt.Fprintf(stdout, "Coverage: %d of %d episodes (%.3f)\n", m.Coverage.Covered, m.Coverage.Relevant, m.Coverage.Score)
+	if m.Counts.Reused > 0 {
+		fmt.Fprintf(stdout, "Reused %d decisions from %s\n", m.Counts.Reused, m.ReusedFrom)
+	}
 	fmt.Fprintf(stdout, "Run: %s\n", filepath.Join(st.Root, "runs", res.Run))
+	rep, err := report.Build(st, res.Run)
+	if err == nil {
+		var path string
+		if path, err = report.Write(st, rep); err == nil {
+			fmt.Fprintf(stdout, "Report: %s (webshadow analyze report %s)\n", path, res.Run)
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "webshadow analyze: report: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runAnalyzeReport(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("analyze report", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { fmt.Fprint(stderr, analyzeUsage) }
+	storeDir := fs.String("store", "", "analysis directory")
+	asJSON := fs.Bool("json", false, "print the report as JSON")
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
+		return 2
+	}
+	if fs.NArg() > 1 {
+		fmt.Fprint(stderr, analyzeUsage)
+		return 2
+	}
+	root, err := recordingsRoot()
+	if err != nil {
+		fmt.Fprintf(stderr, "webshadow analyze report: %v\n", err)
+		return 1
+	}
+	st := store.Open(analysisRoot(root, *storeDir))
+	id := fs.Arg(0)
+	if id == "" || id == store.Latest {
+		if id, err = report.Latest(st); err != nil {
+			fmt.Fprintf(stderr, "webshadow analyze report: %v\n", err)
+			return 1
+		}
+	}
+	rep, err := report.Build(st, id)
+	if err != nil {
+		fmt.Fprintf(stderr, "webshadow analyze report: %v\n", err)
+		return 1
+	}
+	if *asJSON {
+		data, err := ir.EncodeJSON(rep)
+		if err != nil {
+			fmt.Fprintf(stderr, "webshadow analyze report: %v\n", err)
+			return 1
+		}
+		stdout.Write(data)
+		return 0
+	}
+	report.Markdown(stdout, rep)
 	return 0
 }
 

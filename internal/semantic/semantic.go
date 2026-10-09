@@ -24,6 +24,9 @@ type Options struct {
 	Store *store.Store
 	// Decider answers the tasks Go cannot settle by rule.
 	Decider *decide.Decider
+	// Reuse repeats the latest run's decisions for tasks whose content,
+	// prompt and model have not changed, so only what changed is asked.
+	Reuse bool
 }
 
 // Result is what one run produced.
@@ -68,6 +71,13 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 		next = carryForward(prior, in.Manifest.ID)
 	}
 
+	if opts.Reuse {
+		if err := loadPrior(opts.Store, opts.Decider); err != nil {
+			return nil, err
+		}
+		m.ReusedFrom = opts.Decider.PriorRun
+	}
+
 	roles, err := classifyFamilies(ctx, in, opts.Decider)
 	if err != nil {
 		return nil, err
@@ -80,12 +90,17 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	stages := []outcome{roles, ents.outcome, prereqs.outcome}
+	ops, err := synthesizeOperations(ctx, in, opts.Decider, roles.hypotheses, ents, prereqs)
+	if err != nil {
+		return nil, err
+	}
+	stages := []outcome{roles, ents.outcome, prereqs.outcome, ops.outcome}
 	var hyps []ir.Hypothesis
 	for _, st := range stages {
 		hyps = append(hyps, patchHypotheses(next, st.hypotheses)...)
 	}
 	patchEntities(next, ents.entities, ents.dropped)
+	patchOperations(next, in, ops.operations)
 	if err := writeLedgers(run, stages, hyps); err != nil {
 		return nil, err
 	}
@@ -94,9 +109,17 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 			return nil, err
 		}
 	}
+	for _, line := range ops.merges {
+		if err := run.Append("merges.jsonl", line); err != nil {
+			return nil, err
+		}
+	}
 	for _, st := range stages {
 		m.Counts.Tasks += st.tasks
 		for _, d := range st.decisions {
+			if d.Reused != "" {
+				m.Counts.Reused++
+			}
 			switch {
 			case d.Status == StatusSettled:
 				m.Counts.Settled++
@@ -118,6 +141,10 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 		return nil, err
 	}
 	m.Revision, m.Changed = rev, changed
+	if err := run.WriteJSON("patch.json", planPatch(prior, next)); err != nil {
+		return nil, err
+	}
+	m.Coverage = coverage(in, next)
 	for _, f := range in.Families {
 		m.Counts.Families++
 		if f.Static {
@@ -136,6 +163,24 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 		Run: run.ID, Prior: m.Prior, Revision: rev, Changed: changed,
 		IR: next, Input: in, Manifest: m,
 	}, nil
+}
+
+// loadPrior hands the decider the latest complete run's decisions.
+func loadPrior(s *store.Store, d *decide.Decider) error {
+	runs, err := s.Runs()
+	if err != nil || len(runs) == 0 {
+		return err
+	}
+	last := runs[len(runs)-1]
+	decs, err := store.ReadLedger[decide.Decision](s, last, "decisions.jsonl")
+	if err != nil {
+		return err
+	}
+	d.Prior, d.PriorRun = map[string]decide.Decision{}, last
+	for _, dec := range decs {
+		d.Prior[dec.TaskID] = dec
+	}
+	return nil
 }
 
 // settledAside lists the families whose role hypothesis stands as

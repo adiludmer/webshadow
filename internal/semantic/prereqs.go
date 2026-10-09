@@ -22,6 +22,9 @@ const (
 type prereqOutcome struct {
 	outcome
 	preconditions []ir.PrerequisiteHypothesis
+	// fed lists request slots an earlier response filled on every request
+	// with a producer always before it: protocol state, not user input.
+	fed map[string]bool
 }
 
 // operationRoles are the family roles operations are built on, and so the
@@ -38,7 +41,7 @@ var operationRoles = map[string]bool{
 // correlation and never necessity. One the model's answer fails the checks
 // on is rejected.
 func discoverPrerequisites(ctx context.Context, in *input.Input, d *decide.Decider, roles []ir.Hypothesis) (prereqOutcome, error) {
-	var out prereqOutcome
+	out := prereqOutcome{fed: map[string]bool{}}
 	consumers := map[string]bool{}
 	for _, h := range roles {
 		if h.Status == ir.StatusMechanicallySupported && operationRoles[h.CandidateID] {
@@ -88,6 +91,11 @@ func discoverPrerequisites(ctx context.Context, in *input.Input, d *decide.Decid
 			},
 		)
 		h = out.add(h)
+		if c.Carrier == candidates.CarrierScalar && c.WithoutPredecessor == 0 {
+			for _, k := range c.Always {
+				out.fed[ir.Ref(ir.RefFamily, c.Consumer)+"#"+k] = true
+			}
+		}
 		out.preconditions = append(out.preconditions, c.Precondition(h.CandidateID, h.Status, h.ID))
 	}
 	return out, nil
