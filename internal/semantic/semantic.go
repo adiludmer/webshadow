@@ -76,7 +76,11 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	stages := []outcome{roles, ents.outcome}
+	prereqs, err := discoverPrerequisites(ctx, in, opts.Decider, roles.hypotheses)
+	if err != nil {
+		return nil, err
+	}
+	stages := []outcome{roles, ents.outcome, prereqs.outcome}
 	var hyps []ir.Hypothesis
 	for _, st := range stages {
 		hyps = append(hyps, patchHypotheses(next, st.hypotheses)...)
@@ -84,6 +88,11 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 	patchEntities(next, ents.entities, ents.dropped)
 	if err := writeLedgers(run, stages, hyps); err != nil {
 		return nil, err
+	}
+	for _, p := range prereqs.preconditions {
+		if err := run.Append("prerequisites.jsonl", p); err != nil {
+			return nil, err
+		}
 	}
 	for _, st := range stages {
 		m.Counts.Tasks += st.tasks
@@ -118,6 +127,7 @@ func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 	m.Counts.Hypotheses = len(next.Hypotheses)
 	m.Counts.Entities = len(next.Entities)
 	m.Counts.Operations = len(next.Operations)
+	m.Counts.Prerequisites = len(prereqs.preconditions)
 	m.Finished = opts.Store.Now().UTC()
 	if err := run.WriteManifest(m); err != nil {
 		return nil, err

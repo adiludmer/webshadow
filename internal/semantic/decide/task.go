@@ -17,6 +17,7 @@ import (
 const (
 	TypeClassifyFamily = "classify_family"
 	TypeNameEntity     = "name_entity"
+	TypeClassifyPrereq = "classify_prereq"
 )
 
 // ChoiceUnknown is offered by every task: the model's way to abstain.
