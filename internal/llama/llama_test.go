@@ -35,7 +35,7 @@ func TestChatGeneratesAndIsDeterministic(t *testing.T) {
 	if got := m.ContextSize(); got != 256 {
 		t.Errorf("ContextSize = %d, want 256", got)
 	}
-	a, err := m.Chat(context.Background(), hello, 16, 0, 0)
+	a, err := m.Chat(context.Background(), hello, 16, 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestChatGeneratesAndIsDeterministic(t *testing.T) {
 	if a.StopReason == StopLength && a.OutputTokens != 16 {
 		t.Errorf("length stop after %d tokens, want 16", a.OutputTokens)
 	}
-	b, err := m.Chat(context.Background(), hello, 16, 0, 0)
+	b, err := m.Chat(context.Background(), hello, 16, 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,11 +56,11 @@ func TestChatGeneratesAndIsDeterministic(t *testing.T) {
 
 func TestChatSampling(t *testing.T) {
 	m := loadTiny(t, Options{ContextSize: 256})
-	a, err := m.Chat(context.Background(), hello, 16, 0.8, 7)
+	a, err := m.Chat(context.Background(), hello, 16, 0.8, 7, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := m.Chat(context.Background(), hello, 16, 0.8, 7)
+	b, err := m.Chat(context.Background(), hello, 16, 0.8, 7, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,18 +72,18 @@ func TestChatSampling(t *testing.T) {
 func TestChatPromptTooLong(t *testing.T) {
 	m := loadTiny(t, Options{ContextSize: 64})
 	long := []Message{{"user", strings.Repeat("hello world ", 1000)}}
-	if _, err := m.Chat(context.Background(), long, 8, 0, 0); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("context holds %d", m.ContextSize())) {
+	if _, err := m.Chat(context.Background(), long, 8, 0, 0, ""); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("context holds %d", m.ContextSize())) {
 		t.Fatalf("err = %v", err)
 	}
 	// The model stays usable after a refused prompt.
-	if _, err := m.Chat(context.Background(), hello, 4, 0, 0); err != nil {
+	if _, err := m.Chat(context.Background(), hello, 4, 0, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestChatFillsContextWithoutLimit(t *testing.T) {
 	m := loadTiny(t, Options{ContextSize: 128})
-	res, err := m.Chat(context.Background(), hello, 0, 0, 0)
+	res, err := m.Chat(context.Background(), hello, 0, 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,14 +96,14 @@ func TestChatCancellation(t *testing.T) {
 	m := loadTiny(t, Options{ContextSize: 512})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := m.Chat(ctx, hello, 0, 0, 0); !errors.Is(err, context.Canceled) {
+	if _, err := m.Chat(ctx, hello, 0, 0, 0, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled before start: err = %v", err)
 	}
 
 	ctx, cancel = context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 	time.Sleep(2 * time.Millisecond)
-	if _, err := m.Chat(ctx, hello, 0, 0, 0); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := m.Chat(ctx, hello, 0, 0, 0, ""); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expired: err = %v", err)
 	}
 
@@ -113,13 +113,13 @@ func TestChatCancellation(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	time.AfterFunc(50*time.Millisecond, cancel)
 	start := time.Now()
-	if _, err := big.Chat(ctx, hello, 0, 0, 0); !errors.Is(err, context.Canceled) {
+	if _, err := big.Chat(ctx, hello, 0, 0, 0, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled mid-generation: err = %v", err)
 	}
 	if d := time.Since(start); d > 2*time.Second {
 		t.Errorf("abort took %v", d)
 	}
-	if _, err := big.Chat(context.Background(), hello, 4, 0, 0); err != nil {
+	if _, err := big.Chat(context.Background(), hello, 4, 0, 0, ""); err != nil {
 		t.Fatalf("model unusable after an abort: %v", err)
 	}
 }
@@ -133,7 +133,7 @@ func TestLoadAndCloseErrors(t *testing.T) {
 	if err := m.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Chat(context.Background(), hello, 4, 0, 0); err == nil || !strings.Contains(err.Error(), "closed") {
+	if _, err := m.Chat(context.Background(), hello, 4, 0, 0, ""); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("chat after close: err = %v", err)
 	}
 }
@@ -150,12 +150,35 @@ func TestRealModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	res, err := m.Chat(context.Background(), []Message{{"user", "What is 2+2? Answer with just the number."}}, 16, 0, 0)
+	res, err := m.Chat(context.Background(), []Message{{"user", "What is 2+2? Answer with just the number."}}, 16, 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("reply %q, %+v", res.Text, res)
 	if !strings.Contains(res.Text, "4") {
 		t.Errorf("reply %q does not contain 4", res.Text)
+	}
+}
+
+func TestChatGrammarConstrainsOutput(t *testing.T) {
+	m := loadTiny(t, Options{ContextSize: 256})
+	// The tiny model's weights are random, so without the grammar it
+	// produces gibberish; with it, only an allowed answer.
+	grammar := `root ::= "{\"choice_id\":\"" ("item_read" | "unknown") "\"}"`
+	for seed := uint32(0); seed < 3; seed++ {
+		res, err := m.Chat(context.Background(), hello, 64, 0.8, seed, grammar)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Text != `{"choice_id":"item_read"}` && res.Text != `{"choice_id":"unknown"}` {
+			t.Errorf("seed %d: %q (stop %s)", seed, res.Text, res.StopReason)
+		}
+	}
+	if _, err := m.Chat(context.Background(), hello, 8, 0, 0, `root ::= (`); err == nil || !strings.Contains(err.Error(), "grammar") {
+		t.Errorf("a broken grammar gave err = %v", err)
+	}
+	// The model stays usable after a refused grammar.
+	if _, err := m.Chat(context.Background(), hello, 4, 0, 0, ""); err != nil {
+		t.Fatal(err)
 	}
 }

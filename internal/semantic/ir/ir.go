@@ -118,12 +118,26 @@ type Hypothesis struct {
 	Supersedes []string `json:"supersedes,omitempty"`
 }
 
-// HypothesisRef is how the IR lists a hypothesis: its id, kind and status.
-// The full record lives in the run's hypotheses ledger.
+// HypothesisRef is how the IR lists a hypothesis: its id, kind, status,
+// what it is about and which candidate it chose, enough to patch the IR
+// without the run that proposed it. The full record, with evidence and
+// checks, lives in that run's hypotheses ledger.
 type HypothesisRef struct {
-	ID     string           `json:"id"`
-	Kind   HypothesisKind   `json:"kind"`
-	Status HypothesisStatus `json:"status"`
+	ID          string           `json:"id"`
+	Kind        HypothesisKind   `json:"kind"`
+	Status      HypothesisStatus `json:"status"`
+	SubjectRefs []string         `json:"subject_refs"`
+	CandidateID string           `json:"candidate_id"`
+	Supersedes  []string         `json:"supersedes,omitempty"`
+}
+
+// Ref returns how the IR lists h.
+func (h Hypothesis) Ref() HypothesisRef {
+	return HypothesisRef{
+		ID: h.ID, Kind: h.Kind, Status: h.Status,
+		SubjectRefs: append([]string{}, h.SubjectRefs...), CandidateID: h.CandidateID,
+		Supersedes: append([]string(nil), h.Supersedes...),
+	}
 }
 
 // FieldRef is a typed path into one response variant or request slot, such

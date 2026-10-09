@@ -28,9 +28,10 @@ wsl_model *wsl_load(const char *path, int n_ctx, int n_gpu_layers, int n_threads
 
 // wsl_chat applies the model's chat template to the messages, generates up
 // to max_tokens tokens and returns 0, or -1 with err set. temp <= 0 means
-// greedy decoding.
+// greedy decoding. A non-empty grammar is GBNF with a "root" rule that
+// every generated token must keep satisfiable.
 int wsl_chat(wsl_model *m, const char **roles, const char **contents, int n_msgs,
-	int max_tokens, float temp, uint32_t seed, wsl_result *out, char *err, int errlen);
+	int max_tokens, float temp, uint32_t seed, const char *grammar, wsl_result *out, char *err, int errlen);
 
 // wsl_abort makes a running wsl_chat stop after the current token. The
 // flag stays set until wsl_reset_abort, so an abort that lands just before

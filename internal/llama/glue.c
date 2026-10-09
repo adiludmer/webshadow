@@ -137,7 +137,7 @@ static char *format(wsl_model *m, const struct llama_chat_message *msgs, int n, 
 }
 
 int wsl_chat(wsl_model *m, const char **roles, const char **contents, int n_msgs,
-	int max_tokens, float temp, uint32_t seed, wsl_result *out, char *err, int errlen) {
+	int max_tokens, float temp, uint32_t seed, const char *grammar, wsl_result *out, char *err, int errlen) {
 	memset(out, 0, sizeof *out);
 
 	struct llama_chat_message *msgs = malloc(sizeof *msgs * (size_t)(n_msgs > 0 ? n_msgs : 1));
@@ -175,6 +175,18 @@ int wsl_chat(wsl_model *m, const char **roles, const char **contents, int n_msgs
 	llama_memory_clear(llama_get_memory(m->ctx), true);
 
 	struct llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+	// A grammar goes first in the chain, so every later sampler only sees
+	// tokens the grammar allows.
+	if (grammar != NULL && grammar[0] != 0) {
+		struct llama_sampler *g = llama_sampler_init_grammar(m->vocab, grammar, "root");
+		if (g == NULL) {
+			llama_sampler_free(smpl);
+			free(tokens);
+			set_err(err, errlen, "the grammar does not parse");
+			return -1;
+		}
+		llama_sampler_chain_add(smpl, g);
+	}
 	if (temp <= 0) {
 		llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
 	} else {

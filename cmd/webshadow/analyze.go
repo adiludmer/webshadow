@@ -1,21 +1,25 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/adiludmer/webshadow/internal/benchmark/model"
 	"github.com/adiludmer/webshadow/internal/semantic"
+	"github.com/adiludmer/webshadow/internal/semantic/decide"
 	"github.com/adiludmer/webshadow/internal/semantic/input"
 	"github.com/adiludmer/webshadow/internal/semantic/ir"
 	"github.com/adiludmer/webshadow/internal/semantic/store"
 )
 
-const analyzeUsage = `usage: webshadow analyze [-store dir] <cluster id or dir>
+const analyzeUsage = `usage: webshadow analyze [-store dir] [-model mock|<id>] [-models models.yaml] <cluster id or dir>
        webshadow analyze redact [-gz] <cluster id or dir> <out dir>
 
 analyze reads the output of webshadow cluster and commits a new revision of
@@ -23,6 +27,11 @@ the Agent Interface IR, with the run's decisions and checks under
 recordings/analysis/ unless -store names another directory. Cookies, tokens
 and other secret values are replaced by stable tags before anything reads
 them. Analysing the same evidence twice leaves the IR unchanged.
+
+-model names the model that answers the role questions Go cannot settle
+by rule: "mock" (the default) picks each task's first structural choice
+offline; any other id is an entry in the -models file, such as a local
+GGUF model run through llama.cpp.
 
 redact writes a copy of a cluster output with those values already
 replaced, for sharing it or keeping it as a test fixture.
@@ -42,6 +51,8 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, analyzeUsage) }
 	storeDir := fs.String("store", "", "analysis directory")
+	modelID := fs.String("model", decide.MockID, "model that answers decision tasks")
+	modelsPath := fs.String("models", "models.yaml", "models file")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -57,8 +68,16 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "webshadow analyze: %v\n", err)
 		return 1
 	}
+	decider, err := openDecider(*modelID, *modelsPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "webshadow analyze: %v\n", err)
+		return 1
+	}
+	defer decider.Model.Close()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 	st := store.Open(analysisRoot(root, *storeDir))
-	res, err := semantic.Analyze(clusterDir(root, fs.Arg(0)), semantic.Options{Store: st})
+	res, err := semantic.Analyze(ctx, clusterDir(root, fs.Arg(0)), semantic.Options{Store: st, Decider: decider})
 	if err != nil {
 		fmt.Fprintf(stderr, "webshadow analyze: %v\n", err)
 		return 1
@@ -75,9 +94,80 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	} else {
 		fmt.Fprintf(stdout, "Revision: %s (unchanged)\n", res.Revision)
 	}
+	fmt.Fprintf(stdout, "Family roles: %d settled by rule, %d asked of %s: %d decided, %d unknown, %d unresolved\n",
+		m.Counts.Settled, m.Counts.Tasks, m.Model, m.Counts.Decided, m.Counts.Unknown, m.Counts.Unresolved)
+	printRoles(stdout, res.IR)
 	fmt.Fprintf(stdout, "Entities: %d, operations: %d, hypotheses: %d\n", m.Counts.Entities, m.Counts.Operations, m.Counts.Hypotheses)
 	fmt.Fprintf(stdout, "Run: %s\n", filepath.Join(st.Root, "runs", res.Run))
 	return 0
+}
+
+// openDecider opens the model a run asks: the built-in mock, or an entry
+// of the models file.
+func openDecider(id, modelsPath string) (*decide.Decider, error) {
+	if id == decide.MockID {
+		return decide.New(&decide.Mock{}, decide.ModelInfo{ID: decide.MockID, Adapter: "mock"}, decide.DefaultParams()), nil
+	}
+	reg, err := model.LoadRegistry(modelsPath)
+	if err != nil {
+		return nil, err
+	}
+	cfg, ok := reg.Get(id)
+	if !ok {
+		return nil, fmt.Errorf("no model %q in %s (have %s)", id, modelsPath, strings.Join(reg.IDs(), ", "))
+	}
+	m, err := reg.Open(id, os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	info := decide.ModelInfo{ID: id, Adapter: cfg.Adapter}
+	if cfg.ModelPath != "" {
+		if path, err := expandPath(cfg.ModelPath); err == nil {
+			info.Path = path
+			info.Quantization = quantization(path)
+		}
+	}
+	return decide.New(m, info, decide.DefaultParams()), nil
+}
+
+func expandPath(p string) (string, error) {
+	out := os.Expand(p, os.Getenv)
+	if out == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	return out, nil
+}
+
+// quantization reads the quantization from a GGUF file name, such as
+// Q4_K_M in Qwen3-4B-Q4_K_M.gguf.
+func quantization(path string) string {
+	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	parts := strings.FieldsFunc(base, func(r rune) bool { return r == '-' || r == '.' })
+	for i := len(parts) - 1; i >= 0; i-- {
+		p := strings.ToUpper(parts[i])
+		if strings.HasPrefix(p, "Q") && len(p) > 1 && p[1] >= '0' && p[1] <= '9' || p == "F16" || p == "BF16" || p == "F32" {
+			return parts[i]
+		}
+	}
+	return ""
+}
+
+// printRoles counts the standing family-role hypotheses by role.
+func printRoles(w io.Writer, x *ir.InterfaceIR) {
+	counts := map[string]int{}
+	for _, h := range x.Hypotheses {
+		if h.Kind == ir.KindFamilyRole && h.Status != ir.StatusSuperseded && h.Status != ir.StatusRejected {
+			counts[h.CandidateID]++
+		}
+	}
+	roles := make([]string, 0, len(counts))
+	for r := range counts {
+		roles = append(roles, r)
+	}
+	sort.Strings(roles)
+	for _, r := range roles {
+		fmt.Fprintf(w, "  %-16s %d\n", r, counts[r])
+	}
 }
 
 func runAnalyzeRedact(args []string, stdout, stderr io.Writer) int {

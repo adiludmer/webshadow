@@ -28,6 +28,10 @@ type Request struct {
 	Messages    []Message
 	MaxTokens   int
 	Temperature *float64
+	// Grammar, when set, is GBNF with a "root" rule that constrains the
+	// reply. Adapters that cannot constrain output ignore it, so callers
+	// still validate what comes back.
+	Grammar string
 }
 
 // Usage counts tokens.
