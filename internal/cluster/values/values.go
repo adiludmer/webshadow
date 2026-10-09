@@ -43,6 +43,26 @@ func DefaultOptions() Options {
 // bytes are not available.
 type TextSource func(o *model.Observation) ([]byte, bool)
 
+// TokenSource returns the tokens of an observation's unparsed text response,
+// as Tokens finds them, so a caller that clusters the same exchanges again
+// can keep the tokens instead of reading the body each time. Tokens shorter
+// than MinTextValueLen may be left out; they are never searched for.
+type TokenSource func(o *model.Observation) ([]string, bool)
+
+// TextTokens turns a TextSource into a TokenSource.
+func TextTokens(text TextSource) TokenSource {
+	if text == nil {
+		return nil
+	}
+	return func(o *model.Observation) ([]string, bool) {
+		data, ok := text(o)
+		if !ok {
+			return nil, false
+		}
+		return Tokens(data), true
+	}
+}
+
 // Index maps each value to every occurrence of it.
 type Index struct {
 	opts   Options
@@ -55,6 +75,11 @@ type Index struct {
 // Build indexes the values of the observations. text may be nil, in which
 // case unparsed text bodies are not searched.
 func Build(obs []model.Observation, fams family.Result, text TextSource, opts Options) *Index {
+	return BuildFromTokens(obs, fams, TextTokens(text), opts)
+}
+
+// BuildFromTokens is Build with the text bodies already tokenized.
+func BuildFromTokens(obs []model.Observation, fams family.Result, text TokenSource, opts Options) *Index {
 	if opts.UbiquitousFamilies == 0 {
 		opts = DefaultOptions()
 	}
@@ -118,7 +143,7 @@ var scannable = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 // product ids in a search results page, so the page can link to the
 // requests that later carry them. Only values that some request carried are
 // looked for; a page's own tokens are not indexed wholesale.
-func (ix *Index) scanText(obs []model.Observation, fams family.Result, text TextSource) {
+func (ix *Index) scanText(obs []model.Observation, fams family.Result, text TokenSource) {
 	candidates := map[string]bool{}
 	for v, list := range ix.occ {
 		if len(v) < ix.opts.MinTextValueLen || !scannable.MatchString(v) {
@@ -140,12 +165,12 @@ func (ix *Index) scanText(obs []model.Observation, fams family.Result, text Text
 		if b.Kind != model.BodyOpaque || !textMedia[b.Media] || b.Size > ix.opts.MaxTextBytes {
 			continue
 		}
-		data, ok := text(o)
+		toks, ok := text(o)
 		if !ok {
 			continue
 		}
 		fam := fams.ByObservation[o.Ref().Key()]
-		for _, tok := range tokens(data) {
+		for _, tok := range toks {
 			if !candidates[tok] {
 				continue
 			}
@@ -159,10 +184,10 @@ func (ix *Index) scanText(obs []model.Observation, fams family.Result, text Text
 	}
 }
 
-// tokens returns the distinct tokens of a text body in first-seen order. A
+// Tokens returns the distinct tokens of a text body in first-seen order. A
 // token is a run of letters, digits, underscores and hyphens, which is how
 // identifiers sit inside URLs, attributes and script literals.
-func tokens(data []byte) []string {
+func Tokens(data []byte) []string {
 	seen := map[string]bool{}
 	var out []string
 	start := -1

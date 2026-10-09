@@ -168,7 +168,10 @@ func (c *Conn) Call(ctx context.Context, sessionID, method string, params any) (
 	}
 	c.pending[id] = ch
 	c.mu.Unlock()
-	if err := c.ws.Write(ctx, websocket.MessageText, data); err != nil {
+	// The write is not bound by ctx: the websocket library closes the whole
+	// connection when a write's context ends mid-write, so one slow command
+	// would end the recording. Only the wait for the result times out.
+	if err := c.ws.Write(context.Background(), websocket.MessageText, data); err != nil {
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
@@ -204,6 +207,13 @@ func isClosed(ch <-chan struct{}) bool {
 
 // Done is closed when the connection ends.
 func (c *Conn) Done() <-chan struct{} { return c.done }
+
+// Err is the error that ended the connection, once Done is closed.
+func (c *Conn) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.err
+}
 
 // Close ends the connection.
 func (c *Conn) Close() error {

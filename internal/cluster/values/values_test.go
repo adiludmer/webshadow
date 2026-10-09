@@ -152,7 +152,7 @@ func TestLinksIgnoreInputOrder(t *testing.T) {
 }
 
 func TestTokens(t *testing.T) {
-	got := tokens([]byte(`href="/a-b/dp/B0X_1?x=1" B0X_1`))
+	got := Tokens([]byte(`href="/a-b/dp/B0X_1?x=1" B0X_1`))
 	want := []string{"href", "a-b", "dp", "B0X_1", "x", "1"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("tokens = %v, want %v", got, want)

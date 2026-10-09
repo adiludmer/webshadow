@@ -63,6 +63,10 @@ type Result struct {
 	Episodes  []model.Episode       `json:"episodes"`
 	Sequences []model.SequenceEdge  `json:"sequences"`
 	Evidence  evidence.Pack         `json:"evidence"`
+	// Flows are the individual value flows the sequence edges aggregate, in
+	// trace order per session. They are not written out; the live view
+	// shows the latest ones.
+	Flows []stateflow.Flow `json:"-"`
 }
 
 // Options bound and tune the pass.
@@ -90,17 +94,18 @@ func Run(recs []*recording.Recording, opts Options) (*Result, error) {
 }
 
 // Runner runs the pass repeatedly over recordings that grow, as a live view
-// does. Each exchange is normalized once and cached; everything after
-// normalization is recomputed, because a new observation can change any
-// route template, family or edge.
+// does. Each exchange is normalized, and its text body tokenized, once and
+// cached; everything after that is recomputed, because a new observation
+// can change any route template, family or edge.
 type Runner struct {
-	opts  Options
-	cache map[string]model.Observation
+	opts   Options
+	cache  map[string]model.Observation
+	tokens map[string][]string
 }
 
 // NewRunner returns a runner with an empty cache.
 func NewRunner(opts Options) *Runner {
-	return &Runner{opts: opts, cache: map[string]model.Observation{}}
+	return &Runner{opts: opts, cache: map[string]model.Observation{}, tokens: map[string][]string{}}
 }
 
 // Run clusters the recordings as they are now.
@@ -143,15 +148,31 @@ func (r *Runner) Run(recs []*recording.Recording) (*Result, error) {
 	}
 
 	fams := family.Build(obs)
-	text := func(o *model.Observation) ([]byte, bool) {
-		s, ok := sources[o.Ref().Key()]
+	text := func(o *model.Observation) ([]string, bool) {
+		key := o.Ref().Key()
+		if toks, ok := r.tokens[key]; ok {
+			return toks, toks != nil
+		}
+		s, ok := sources[key]
 		if !ok || s.ex.Response == nil || s.ex.Response.Body == nil {
 			return nil, false
 		}
 		data, err := normalize.ReadBody(s.rec, s.ex.Response.Body)
-		return data, err == nil
+		if err != nil {
+			// Kept as nil so an unreadable body is not read again.
+			r.tokens[key] = nil
+			return nil, false
+		}
+		toks := []string{}
+		for _, t := range values.Tokens(data) {
+			if len(t) >= r.opts.Values.MinTextValueLen {
+				toks = append(toks, t)
+			}
+		}
+		r.tokens[key] = toks
+		return toks, true
 	}
-	ix := values.Build(obs, fams, text, r.opts.Values)
+	ix := values.BuildFromTokens(obs, fams, text, r.opts.Values)
 
 	byKey := make(map[string]*model.Observation, len(obs))
 	for i := range obs {
@@ -170,6 +191,7 @@ func (r *Runner) Run(recs []*recording.Recording) (*Result, error) {
 		flows = append(flows, stateflow.Detect(tr, byKey, ix)...)
 	}
 	res.Sequences = sequence.Aggregate(res.Traces, flows, ix)
+	res.Flows = flows
 
 	inputs := make([]Input, 0, len(recs))
 	for _, rec := range recs {

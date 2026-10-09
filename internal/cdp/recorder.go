@@ -4,7 +4,10 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
+	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/adiludmer/webshadow/internal/recording"
@@ -33,6 +36,8 @@ type Recorder struct {
 
 	// pages receives the session id of each page once it is set up.
 	pages chan string
+	// closing is set by Close, so the loop does not report the end it caused.
+	closing atomic.Bool
 }
 
 type target struct {
@@ -92,6 +97,7 @@ func (r *Recorder) Done() <-chan struct{} { return r.done }
 // browser that already exited leaves no closing handshake to complete, so
 // errors from it are not reported.
 func (r *Recorder) Close() error {
+	r.closing.Store(true)
 	r.conn.Close()
 	<-r.done
 	return nil
@@ -105,6 +111,10 @@ func (r *Recorder) loop() {
 			break
 		}
 		r.handle(ev)
+	}
+	// An EOF is the browser going away, which ends every session.
+	if err := r.conn.Err(); err != nil && !r.closing.Load() && !errors.Is(err, io.EOF) {
+		r.logf("cdp: connection to the browser ended: %v", err)
 	}
 	r.setup.Wait()
 }

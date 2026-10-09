@@ -65,7 +65,15 @@ recordings always give the same output, byte for byte.
 ```
 webshadow cluster <id> [<id>...]
 webshadow cluster -yaml -out /tmp/shop <id> <id>
+webshadow cluster -follow <id>
 ```
+
+`-follow` watches a recording while `webshadow browser` is still recording
+it, in a second terminal: it re-clusters about once a second and redraws the
+families, counts, newly discovered value flows and changes (new families,
+and families regrouped when a path position turns out to vary). When the
+recording completes, or on Ctrl-C, it writes the output as a normal run
+would.
 
 Output goes to `~/.webshadow/recordings/clusters/<result id>/`:
 `families.json`, `links.json`, `traces.json`, `episodes.json`,

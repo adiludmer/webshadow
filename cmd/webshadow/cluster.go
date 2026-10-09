@@ -5,17 +5,23 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"time"
 
 	"github.com/adiludmer/webshadow/internal/cluster"
 	"github.com/adiludmer/webshadow/internal/recording"
 )
 
 const clusterUsage = `usage: webshadow cluster [-out dir] [-yaml] <id>...
+       webshadow cluster -follow [-interval 1s] [-out dir] [-yaml] <id>
 
 Groups the requests of one or more recordings into request families and
 writes the families, value links, traces, episodes, sequence edges and an
 evidence pack. The output goes to recordings/clusters/<result id>/ unless
 -out names a directory. The same recordings always give the same output.
+
+-follow watches one recording while it is being recorded, redrawing the
+families, counts and latest value flows as they change, and writes the
+output once the recording completes or on Ctrl-C.
 `
 
 func runCluster(args []string, stdout, stderr io.Writer) int {
@@ -24,6 +30,8 @@ func runCluster(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { fmt.Fprint(stderr, clusterUsage) }
 	out := fs.String("out", "", "output directory")
 	withYAML := fs.Bool("yaml", false, "also write evidence.yaml")
+	follow := fs.Bool("follow", false, "watch one recording as it grows")
+	interval := fs.Duration("interval", time.Second, "how often -follow re-clusters")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -40,6 +48,23 @@ func runCluster(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	root := filepath.Join(home, "recordings")
+	if *follow {
+		if fs.NArg() != 1 || *interval <= 0 {
+			fmt.Fprint(stderr, clusterUsage)
+			return 2
+		}
+		dir, err := recording.Dir(root, fs.Arg(0))
+		if err != nil {
+			fmt.Fprintf(stderr, "webshadow cluster: %v\n", err)
+			return 1
+		}
+		ctx, stop := followContext()
+		defer stop()
+		return runFollow(ctx, followConfig{
+			dir: dir, interval: *interval, out: *out, root: root, withYAML: *withYAML,
+			terminal: isTerminal(stdout), size: terminalSize(),
+		}, stdout, stderr)
+	}
 	var recs []*recording.Recording
 	for _, id := range fs.Args() {
 		dir, err := recording.Dir(root, id)
