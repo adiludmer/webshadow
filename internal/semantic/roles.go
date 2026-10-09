@@ -28,8 +28,8 @@ type Verification struct {
 	Checks     []ir.CheckResult    `json:"checks"`
 }
 
-// roleOutcome is what the role stage produced.
-type roleOutcome struct {
+// outcome is what one stage produced.
+type outcome struct {
 	decisions     []decide.Decision
 	hypotheses    []ir.Hypothesis
 	verifications []Verification
@@ -38,8 +38,8 @@ type roleOutcome struct {
 
 // classifyFamilies asks the role question for every family: settled ones
 // by rule, the rest of the model through d.
-func classifyFamilies(ctx context.Context, in *input.Input, d *decide.Decider) (roleOutcome, error) {
-	var out roleOutcome
+func classifyFamilies(ctx context.Context, in *input.Input, d *decide.Decider) (outcome, error) {
+	var out outcome
 	subjects := subjectIndex(in)
 	for _, q := range candidates.FamilyRoles(in) {
 		subject := ir.Ref(ir.RefFamily, q.Family)
@@ -84,11 +84,13 @@ func classifyFamilies(ctx context.Context, in *input.Input, d *decide.Decider) (
 	return out, nil
 }
 
-func (o *roleOutcome) add(h ir.Hypothesis) {
+// add records a hypothesis and its checks, and returns it with its id.
+func (o *outcome) add(h ir.Hypothesis) ir.Hypothesis {
 	h.ID = hypothesisID(h)
 	h.Canonicalize()
 	o.hypotheses = append(o.hypotheses, h)
 	o.verifications = append(o.verifications, Verification{Hypothesis: h.ID, Status: h.Status, Checks: h.Checks})
+	return h
 }
 
 // hypothesisID is stable for the same claim about the same subject, so the
@@ -97,15 +99,16 @@ func hypothesisID(h ir.Hypothesis) string {
 	return ir.NodeID(ir.RefHypothesis, string(h.Kind)+"\x00"+strings.Join(h.SubjectRefs, ",")+"\x00"+h.CandidateID)
 }
 
-// roleChecks are the deterministic checks on a model's role answer. They
-// show the answer is well formed and grounded in this family's evidence,
-// not that the role is right.
+// roleChecks are the deterministic checks on a model's answer. They show
+// the answer is well formed and grounded in its subject's evidence, not
+// that the answer is right.
 func roleChecks(in *input.Input, task decide.Task, dec decide.Decision, about map[string]bool) []ir.CheckResult {
 	_, offered := task.Choice(dec.ChoiceID)
 	checks := []ir.CheckResult{{Check: CheckChoiceOffered, Passed: offered, Detail: dec.ChoiceID}}
 	var missing, onSubject []string
 	for _, r := range dec.EvidenceRefs {
-		if !in.Has(r) {
+		// A field reference resolves through the part before its path.
+		if base, _, _ := strings.Cut(r, "#"); !in.Has(base) {
 			missing = append(missing, r)
 		}
 		if about[r] {
@@ -118,7 +121,7 @@ func roleChecks(in *input.Input, task decide.Task, dec decide.Decision, about ma
 	}
 	subject := ir.CheckResult{Check: CheckEvidenceSubject, Passed: len(onSubject) > 0, EvidenceRefs: onSubject}
 	if len(onSubject) == 0 {
-		subject.Detail = "no cited evidence involves this family"
+		subject.Detail = "no cited evidence involves the subject"
 	}
 	return append(checks, exists, subject)
 }

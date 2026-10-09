@@ -118,26 +118,39 @@ func TestRoleLedgersAreReproducible(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := ra.Manifest.Counts
-	if c.Settled+c.Tasks != 294 || c.Decided != c.Tasks || c.Hypotheses != 294 {
+	if c.Decided != c.Tasks || c.Hypotheses != len(ra.IR.Hypotheses) {
 		t.Errorf("counts = %+v", c)
 	}
 	for _, name := range []string{"hypotheses.jsonl", "verification.jsonl"} {
 		la, lb := ledger(t, a, ra.Run, name), ledger(t, b, rb.Run, name)
-		if lines := bytes.Count(la, []byte("\n")); lines != 294 {
-			t.Errorf("%s has %d lines", name, lines)
+		if lines := bytes.Count(la, []byte("\n")); lines != c.Hypotheses {
+			t.Errorf("%s has %d lines, want %d", name, lines, c.Hypotheses)
 		}
 		if !bytes.Equal(la, lb) {
 			t.Errorf("%s differs between identical runs", name)
 		}
 	}
-	if lines := bytes.Count(ledger(t, a, ra.Run, "decisions.jsonl"), []byte("\n")); lines != 294 {
+	if lines := bytes.Count(ledger(t, a, ra.Run, "decisions.jsonl"), []byte("\n")); lines != c.Settled+c.Tasks {
 		t.Errorf("decisions.jsonl has %d lines", lines)
 	}
-	for _, h := range ra.IR.Hypotheses {
-		if h.Kind != ir.KindFamilyRole || h.Status != ir.StatusMechanicallySupported {
+	if n := len(roleHypotheses(ra.IR)); n != 294 {
+		t.Errorf("%d role hypotheses, want one per family", n)
+	}
+	for _, h := range roleHypotheses(ra.IR) {
+		if h.Status != ir.StatusMechanicallySupported {
 			t.Errorf("hypothesis %+v", h)
 		}
 	}
+}
+
+func roleHypotheses(x *ir.InterfaceIR) []ir.HypothesisRef {
+	var out []ir.HypothesisRef
+	for _, h := range x.Hypotheses {
+		if h.Kind == ir.KindFamilyRole {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 func scripted(s *store.Store, replies ...string) Options {
@@ -163,7 +176,7 @@ func TestInvalidAnswersNeverReachTheIR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Manifest.Counts.Unresolved != 1 || res.Manifest.Counts.Hypotheses != 293 {
+	if res.Manifest.Counts.Unresolved != 1 || len(roleHypotheses(res.IR)) != 293 {
 		t.Errorf("counts = %+v", res.Manifest.Counts)
 	}
 	if got := searchRoles(res.IR); len(got) != 0 {
