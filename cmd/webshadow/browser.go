@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/adiludmer/webshadow/internal/cdp"
 	"github.com/adiludmer/webshadow/internal/chromium"
@@ -185,10 +186,29 @@ func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, 
 	fmt.Fprintf(stdout, "Recording: %s\n", store.Dir())
 	fmt.Fprintf(stdout, "Press Ctrl-C or close the browser to stop.\n")
 
+	// Flushed each second, so `cluster -follow` sees the session as it grows.
+	flushDone := make(chan struct{})
+	stopFlush := make(chan struct{})
+	go func() {
+		defer close(flushDone)
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stopFlush:
+				return
+			case <-t.C:
+				store.Flush()
+			}
+		}
+	}()
+
 	select {
 	case <-ctx.Done():
 	case <-b.Done():
 	}
+	close(stopFlush)
+	<-flushDone
 	berr := b.Close()
 	// The browser is gone, so this only waits for queued events.
 	rerr := rec.Close()
