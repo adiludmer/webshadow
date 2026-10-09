@@ -11,3 +11,11 @@ committed: every cookie, Set-Cookie, credential header, JWT and email
 address is a `{{redacted:<location>:<hash>}}` tag. Equal values share a tag,
 so value links and flows still join. `TestFixtureHoldsNoSecrets` checks
 that loading it finds nothing left to redact.
+
+`expected-ir.json` is the benchmark's ground truth for this result: the
+roles of 83 families, the product, parent product, suggestion and search
+scope entities, the search, product and suggestion operations with their
+required inputs and outputs, and which prerequisites on those operations
+are real. It labels only what a reviewer is sure of; anything it leaves out
+is not scored. `make analyze-bench MODEL="qwen3-1.7b qwen3-4b"` scores
+models against it.
