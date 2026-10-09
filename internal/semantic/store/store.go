@@ -229,6 +229,10 @@ type Counts struct {
 	Families       int `json:"families"`
 	StaticFamilies int `json:"static_families"`
 	Tasks          int `json:"tasks"`
+	Settled        int `json:"settled"`
+	Decided        int `json:"decided"`
+	Unknown        int `json:"unknown"`
+	Unresolved     int `json:"unresolved"`
 	Hypotheses     int `json:"hypotheses"`
 	Entities       int `json:"entities"`
 	Operations     int `json:"operations"`
@@ -261,6 +265,27 @@ func (s *Store) NewRun() (*Run, error) {
 		}
 	}
 	return &Run{ID: id, Dir: dir}, nil
+}
+
+// Append adds records to one of the run's ledgers, one JSON object per
+// line.
+func (r *Run) Append(ledger string, records ...any) error {
+	f, err := os.OpenFile(filepath.Join(r.Dir, ledger), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	for _, rec := range records {
+		data, err := json.Marshal(rec)
+		if err != nil {
+			f.Close()
+			return err
+		}
+		if _, err := f.Write(append(data, '\n')); err != nil {
+			f.Close()
+			return err
+		}
+	}
+	return f.Close()
 }
 
 // WriteManifest stores the run's manifest. It is written last, so a run

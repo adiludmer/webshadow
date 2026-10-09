@@ -9,8 +9,10 @@
 package semantic
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/adiludmer/webshadow/internal/semantic/decide"
 	"github.com/adiludmer/webshadow/internal/semantic/input"
 	"github.com/adiludmer/webshadow/internal/semantic/ir"
 	"github.com/adiludmer/webshadow/internal/semantic/store"
@@ -19,6 +21,8 @@ import (
 // Options configure a run.
 type Options struct {
 	Store *store.Store
+	// Decider answers the tasks Go cannot settle by rule.
+	Decider *decide.Decider
 }
 
 // Result is what one run produced.
@@ -34,7 +38,7 @@ type Result struct {
 
 // Analyze runs semantic discovery over the clustering result in dir and
 // commits the resulting IR to the store.
-func Analyze(dir string, opts Options) (*Result, error) {
+func Analyze(ctx context.Context, dir string, opts Options) (*Result, error) {
 	in, err := input.Load(dir)
 	if err != nil {
 		return nil, err
@@ -51,6 +55,7 @@ func Analyze(dir string, opts Options) (*Result, error) {
 		EvidenceDir:   in.Dir,
 		EvidenceFiles: in.Files,
 		Redaction:     in.Redaction,
+		Model:         opts.Decider.Info.ID,
 	}
 	prior, err := opts.Store.Load(store.Latest)
 	if err != nil {
@@ -61,6 +66,29 @@ func Analyze(dir string, opts Options) (*Result, error) {
 		m.Prior = prior.Revision
 		next = carryForward(prior, in.Manifest.ID)
 	}
+
+	roles, err := classifyFamilies(ctx, in, opts.Decider)
+	if err != nil {
+		return nil, err
+	}
+	hyps := patchHypotheses(next, roles.hypotheses)
+	if err := writeLedgers(run, roles, hyps); err != nil {
+		return nil, err
+	}
+	m.Counts.Tasks = roles.tasks
+	for _, d := range roles.decisions {
+		switch {
+		case d.Status == StatusSettled:
+			m.Counts.Settled++
+		case d.Status == decide.StatusUnresolved:
+			m.Counts.Unresolved++
+		case d.ChoiceID == decide.ChoiceUnknown:
+			m.Counts.Unknown++
+		default:
+			m.Counts.Decided++
+		}
+	}
+
 	if err := next.Validate(in); err != nil {
 		return nil, fmt.Errorf("IR failed validation, nothing committed:\n%w", err)
 	}
@@ -94,5 +122,28 @@ func Analyze(dir string, opts Options) (*Result, error) {
 func carryForward(prior *ir.InterfaceIR, evidence string) *ir.InterfaceIR {
 	next := *prior
 	next.Evidence = append(append([]string{}, prior.Evidence...), evidence)
+	next.Hypotheses = append([]ir.HypothesisRef{}, prior.Hypotheses...)
 	return &next
+}
+
+// writeLedgers appends the run's decisions, the hypotheses it proposed and
+// their checks to the run directory. Hypotheses and verifications carry no
+// timing or run ids, so the same evidence and model give the same lines.
+func writeLedgers(run *store.Run, roles roleOutcome, hyps []ir.Hypothesis) error {
+	for _, d := range roles.decisions {
+		if err := run.Append("decisions.jsonl", d); err != nil {
+			return err
+		}
+	}
+	for _, h := range hyps {
+		if err := run.Append("hypotheses.jsonl", h); err != nil {
+			return err
+		}
+	}
+	for _, v := range roles.verifications {
+		if err := run.Append("verification.jsonl", v); err != nil {
+			return err
+		}
+	}
+	return nil
 }

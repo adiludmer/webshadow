@@ -14,7 +14,7 @@ func Load(path string, opts Options) (*Model, error) { return nil, ErrNotBuilt }
 
 func (m *Model) ContextSize() int { return 0 }
 
-func (m *Model) Chat(ctx context.Context, msgs []Message, maxTokens int, temperature float32, seed uint32) (Result, error) {
+func (m *Model) Chat(ctx context.Context, msgs []Message, maxTokens int, temperature float32, seed uint32, grammar string) (Result, error) {
 	return Result{}, ErrNotBuilt
 }
 

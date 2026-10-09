@@ -55,6 +55,10 @@ func (x *InterfaceIR) Canonicalize() {
 		op.EvidenceRefs = sortedSet(op.EvidenceRefs)
 	}
 	sort.Slice(x.Operations, func(a, b int) bool { return x.Operations[a].ID < x.Operations[b].ID })
+	for i := range x.Hypotheses {
+		x.Hypotheses[i].SubjectRefs = sortedSet(x.Hypotheses[i].SubjectRefs)
+		x.Hypotheses[i].Supersedes = sortedSet(x.Hypotheses[i].Supersedes)
+	}
 	sort.Slice(x.Hypotheses, func(a, b int) bool { return x.Hypotheses[a].ID < x.Hypotheses[b].ID })
 }
 

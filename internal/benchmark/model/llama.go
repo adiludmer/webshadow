@@ -43,7 +43,7 @@ func (l *Llama) Complete(ctx context.Context, req Request) (Response, error) {
 	if req.Temperature != nil {
 		temp = *req.Temperature
 	}
-	res, err := l.model.Chat(ctx, msgs, maxTokens, float32(temp), l.cfg.Seed)
+	res, err := l.model.Chat(ctx, msgs, maxTokens, float32(temp), l.cfg.Seed, req.Grammar)
 	if err != nil {
 		return Response{}, err
 	}

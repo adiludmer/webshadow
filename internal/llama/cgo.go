@@ -58,9 +58,10 @@ func (m *Model) ContextSize() int {
 // Chat renders msgs with the model's chat template and generates a reply
 // of at most maxTokens tokens (zero means until the context is full).
 // temperature <= 0 decodes greedily, so equal inputs give equal outputs.
-// Cancelling ctx stops generation after the current token and returns
-// ctx's error.
-func (m *Model) Chat(ctx context.Context, msgs []Message, maxTokens int, temperature float32, seed uint32) (Result, error) {
+// A non-empty grammar is GBNF with a "root" rule; generation then only
+// produces text the grammar accepts. Cancelling ctx stops generation after
+// the current token and returns ctx's error.
+func (m *Model) Chat(ctx context.Context, msgs []Message, maxTokens int, temperature float32, seed uint32, grammar string) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -87,6 +88,11 @@ func (m *Model) Chat(ctx context.Context, msgs []Message, maxTokens int, tempera
 	}()
 	errBuf := (*C.char)(C.calloc(errLen, 1))
 	defer C.free(unsafe.Pointer(errBuf))
+	var cgrammar *C.char
+	if grammar != "" {
+		cgrammar = C.CString(grammar)
+		defer C.free(unsafe.Pointer(cgrammar))
+	}
 
 	h := m.handle
 	C.wsl_reset_abort(h)
@@ -102,7 +108,7 @@ func (m *Model) Chat(ctx context.Context, msgs []Message, maxTokens int, tempera
 
 	var out C.wsl_result
 	rc := C.wsl_chat(h, (**C.char)(unsafe.SliceData(roles)), (**C.char)(unsafe.SliceData(contents)), C.int(n),
-		C.int(maxTokens), C.float(temperature), C.uint32_t(seed), &out, errBuf, errLen)
+		C.int(maxTokens), C.float(temperature), C.uint32_t(seed), cgrammar, &out, errBuf, errLen)
 	if rc != 0 {
 		return Result{}, errors.New("llama: " + C.GoString(errBuf))
 	}

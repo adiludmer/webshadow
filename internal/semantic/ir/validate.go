@@ -49,6 +49,16 @@ func (x *InterfaceIR) Validate(evidence Resolver) error {
 		}
 	}
 
+	// Subjects may name nodes, so they resolve once every node is known.
+	for _, h := range x.Hypotheses {
+		v.refs(h.ID, h.SubjectRefs)
+		for _, s := range h.Supersedes {
+			if !hyps[s] {
+				v.addf("%s: supersedes %q, which is not listed", h.ID, s)
+			}
+		}
+	}
+
 	hyp := func(owner, id string) {
 		if !hyps[id] {
 			v.addf("%s: hypothesis %q is not listed", owner, id)
