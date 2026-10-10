@@ -62,10 +62,10 @@ func TestScoreMockRun(t *testing.T) {
 	}
 	// Search is one operation over its three URL forms, with the query as
 	// its only required input.
-	if r.Operations.Expected != 3 || r.Operations.Correct < 1 {
+	if r.Operations.Expected != 4 || r.Operations.Correct < 1 {
 		t.Errorf("operations = %+v", r.Operations)
 	}
-	if !has(r.Mistakes, "operation get_asin splits expected get_product") {
+	if !has(r.Mistakes, "operation list_asin splits expected get_product_page") {
 		t.Errorf("mistakes lack the product page split: %v", r.Mistakes)
 	}
 	if r.IdentityJoins.Precision < 0.9 || r.Entities.Correct != 4 {

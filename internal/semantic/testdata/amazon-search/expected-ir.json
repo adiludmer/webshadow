@@ -4,46 +4,110 @@
   "review": "draft: labels written by Claude from the clustering output, awaiting review",
   "notes": [
     "Only labelled families, slots and consumers are scored; anything left out counts neither for nor against a run.",
-    "HTML pages are opaque in the clustering output, so the product page families carry no response fields."
+    "HTML pages are opaque in the clustering output, so the product page families carry no response fields.",
+    "Families are merged into one operation only when they are the same page (same host, same first fixed path segment, same response shapes), never because they share an identifier, so the product page and the product API are separate operations."
   ],
   "roles": {
     "collection_read": [
-      "98258e0892fb", "62873a6451a2", "a063cd25be92",
-      "8e75ea4d5334", "236a4aa04dea"
+      "98258e0892fb",
+      "62873a6451a2",
+      "a063cd25be92",
+      "8e75ea4d5334",
+      "236a4aa04dea"
     ],
     "item_read": [
-      "dea048077b86", "a6b201a26695", "3401dbf3cdfd", "f50dc767c393",
-      "5c82378a50f7", "de2582667e09"
+      "dea048077b86",
+      "a6b201a26695",
+      "3401dbf3cdfd",
+      "f50dc767c393",
+      "5c82378a50f7",
+      "de2582667e09"
     ],
     "presentation": [
-      "e49e17e62ae0", "f4fdf82f4db4", "2e5f9d5ec57d", "01cf959c8e58",
-      "48ad5d176407", "732b94c65753", "c0c2686518e1", "46895d505e42",
-      "615443a6f7de", "26c5e866023b", "554ea6ee2353", "a49c4cdec549",
-      "71261f68428f", "4f8cedd24f35", "22cc749e304f", "77d446490620",
-      "302bef10f015", "8316589fb2b4", "3057f85cfaa3"
+      "e49e17e62ae0",
+      "f4fdf82f4db4",
+      "2e5f9d5ec57d",
+      "01cf959c8e58",
+      "48ad5d176407",
+      "732b94c65753",
+      "c0c2686518e1",
+      "46895d505e42",
+      "615443a6f7de",
+      "26c5e866023b",
+      "554ea6ee2353",
+      "a49c4cdec549",
+      "71261f68428f",
+      "4f8cedd24f35",
+      "22cc749e304f",
+      "77d446490620",
+      "302bef10f015",
+      "8316589fb2b4",
+      "3057f85cfaa3"
     ],
     "background": [
-      "c3872fa1dde0", "cec8041dedaf", "1d3a6c0a45af", "991363de4744",
-      "a53b0b16f4b1", "c14f9a00a7ba", "ee0fe6ca81a4",
-      "0a900fe7d7f9", "1b0355385986", "26a030c5f55b", "ff50c01f816b",
-      "c89f62ec0335", "0cec59b84abd", "23bdce6e9655", "624dc7fc7098",
-      "477eb986af9f", "54c73538bc36", "f165cb4d2051", "4185561829d9",
-      "57186cf56a0b", "87b1b500e557",
-      "008c511b1095", "050a4c114ec5", "58f4958d8543", "5ad7b4a5c357",
-      "61a5064f04fe", "8334a56d0432", "96d7b2d23a7d", "9bc6ba320a18",
-      "beeee6af130a", "d430a784bfca", "5e2cae1f2654", "77d78a6668a0",
+      "c3872fa1dde0",
+      "cec8041dedaf",
+      "1d3a6c0a45af",
+      "991363de4744",
+      "a53b0b16f4b1",
+      "c14f9a00a7ba",
+      "ee0fe6ca81a4",
+      "0a900fe7d7f9",
+      "1b0355385986",
+      "26a030c5f55b",
+      "ff50c01f816b",
+      "c89f62ec0335",
+      "0cec59b84abd",
+      "23bdce6e9655",
+      "624dc7fc7098",
+      "477eb986af9f",
+      "54c73538bc36",
+      "f165cb4d2051",
+      "4185561829d9",
+      "57186cf56a0b",
+      "87b1b500e557",
+      "008c511b1095",
+      "050a4c114ec5",
+      "58f4958d8543",
+      "5ad7b4a5c357",
+      "61a5064f04fe",
+      "8334a56d0432",
+      "96d7b2d23a7d",
+      "9bc6ba320a18",
+      "beeee6af130a",
+      "d430a784bfca",
+      "5e2cae1f2654",
+      "77d78a6668a0",
       "9505697c63df",
-      "1361d503be6c", "191d849e30f8", "1c975ab89618", "3963d2df9d14",
-      "3bde7ec9e739", "3d9e94403a19", "4993811c541d", "520cb36be0d6",
-      "6ea969886e85", "72c126169902", "7c1448d7593f", "7e3d534827d9",
-      "8fb6f0cc1461", "a90c533b09a7", "af4b6fb07180", "b3931da1909a",
-      "eb8ea4e3e297", "edb19ecdd7b6", "fc1dfa841cb4"
+      "1361d503be6c",
+      "191d849e30f8",
+      "1c975ab89618",
+      "3963d2df9d14",
+      "3bde7ec9e739",
+      "3d9e94403a19",
+      "4993811c541d",
+      "520cb36be0d6",
+      "6ea969886e85",
+      "72c126169902",
+      "7c1448d7593f",
+      "7e3d534827d9",
+      "8fb6f0cc1461",
+      "a90c533b09a7",
+      "af4b6fb07180",
+      "b3931da1909a",
+      "eb8ea4e3e297",
+      "edb19ecdd7b6",
+      "fc1dfa841cb4"
     ]
   },
   "entities": [
     {
       "name": "product",
-      "names": ["product", "asin", "item"],
+      "names": [
+        "product",
+        "asin",
+        "item"
+      ],
       "identity": [
         "fam:dea048077b86#request.path.2",
         "fam:a6b201a26695#request.path.2",
@@ -66,12 +130,24 @@
         "fam:71261f68428f#request.body.product.contentID",
         "fam:a49c4cdec549#request.body.product.contentID"
       ],
-      "fields": ["asin"],
-      "relations": [{"kind": "references", "target": "parent_product"}]
+      "fields": [
+        "asin"
+      ],
+      "relations": [
+        {
+          "kind": "references",
+          "target": "parent_product"
+        }
+      ]
     },
     {
       "name": "parent_product",
-      "names": ["parent_product", "parentAsin", "parent_asin", "parent"],
+      "names": [
+        "parent_product",
+        "parentAsin",
+        "parent_asin",
+        "parent"
+      ],
       "identity": [
         "fam:46895d505e42#request.query.parentAsin",
         "fam:615443a6f7de#request.query.parentAsin",
@@ -80,18 +156,46 @@
     },
     {
       "name": "suggestion",
-      "names": ["suggestion", "search_suggestion"],
-      "fields": [
-        "value", "type", "refTag", "strategyId", "prior", "ghost", "help",
-        "suggType", "candidateSources", "strategyApiType", "widgetId",
-        "slot", "template", "suggestionDate", "deleteUrl"
+      "names": [
+        "suggestion",
+        "search_suggestion"
       ],
-      "relations": [{"kind": "contains", "target": "search_scope"}]
+      "fields": [
+        "value",
+        "type",
+        "refTag",
+        "strategyId",
+        "prior",
+        "ghost",
+        "help",
+        "suggType",
+        "candidateSources",
+        "strategyApiType",
+        "widgetId",
+        "slot",
+        "template",
+        "suggestionDate",
+        "deleteUrl"
+      ],
+      "relations": [
+        {
+          "kind": "contains",
+          "target": "search_scope"
+        }
+      ]
     },
     {
       "name": "search_scope",
-      "names": ["scope", "search_scope", "department"],
-      "fields": ["value", "display", "type"]
+      "names": [
+        "scope",
+        "search_scope",
+        "department"
+      ],
+      "fields": [
+        "value",
+        "display",
+        "type"
+      ]
     }
   ],
   "not_identity": [
@@ -105,61 +209,142 @@
     {
       "name": "search_products",
       "role": "collection_read",
-      "families": ["98258e0892fb", "62873a6451a2", "a063cd25be92"],
-      "required": [
-        {"name": "query", "slots": [
-          "fam:98258e0892fb#request.query.k",
-          "fam:62873a6451a2#request.query.field-keywords",
-          "fam:a063cd25be92#request.query.k"
-        ]}
+      "families": [
+        "98258e0892fb",
+        "62873a6451a2",
+        "a063cd25be92"
       ],
-      "outputs": [{"entity": "product", "many": true}]
+      "required": [
+        {
+          "name": "query",
+          "slots": [
+            "fam:98258e0892fb#request.query.k",
+            "fam:62873a6451a2#request.query.field-keywords",
+            "fam:a063cd25be92#request.query.k"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "product",
+          "many": true
+        }
+      ]
+    },
+    {
+      "name": "get_product_page",
+      "role": "item_read",
+      "families": [
+        "dea048077b86",
+        "a6b201a26695",
+        "3401dbf3cdfd",
+        "f50dc767c393"
+      ],
+      "required": [
+        {
+          "name": "asin",
+          "slots": [
+            "fam:dea048077b86#request.path.2",
+            "fam:a6b201a26695#request.path.2",
+            "fam:3401dbf3cdfd#request.path.1",
+            "fam:f50dc767c393#request.path.1"
+          ]
+        }
+      ],
+      "outputs": []
     },
     {
       "name": "get_product",
       "role": "item_read",
       "families": [
-        "dea048077b86", "a6b201a26695", "3401dbf3cdfd", "f50dc767c393",
-        "5c82378a50f7", "de2582667e09"
+        "5c82378a50f7",
+        "de2582667e09"
       ],
       "required": [
-        {"name": "asin", "slots": [
-          "fam:dea048077b86#request.path.2",
-          "fam:a6b201a26695#request.path.2",
-          "fam:3401dbf3cdfd#request.path.1",
-          "fam:f50dc767c393#request.path.1",
-          "fam:5c82378a50f7#request.path.4",
-          "fam:de2582667e09#request.path.4"
-        ]}
+        {
+          "name": "asin",
+          "slots": [
+            "fam:5c82378a50f7#request.path.4",
+            "fam:de2582667e09#request.path.4"
+          ]
+        }
       ],
-      "outputs": [{"entity": "product"}]
+      "outputs": [
+        {
+          "entity": "product"
+        }
+      ]
     },
     {
       "name": "suggest_search_terms",
       "role": "collection_read",
-      "families": ["8e75ea4d5334", "236a4aa04dea"],
-      "required": [
-        {"name": "prefix", "slots": [
-          "fam:8e75ea4d5334#request.query.prefix",
-          "fam:236a4aa04dea#request.query.prefix"
-        ]}
+      "families": [
+        "8e75ea4d5334",
+        "236a4aa04dea"
       ],
-      "outputs": [{"entity": "suggestion", "many": true}]
+      "required": [
+        {
+          "name": "prefix",
+          "slots": [
+            "fam:8e75ea4d5334#request.query.prefix",
+            "fam:236a4aa04dea#request.query.prefix"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "suggestion",
+          "many": true
+        }
+      ]
     }
   ],
   "prerequisites": {
     "consumers": [
-      "98258e0892fb", "62873a6451a2", "a063cd25be92",
-      "dea048077b86", "a6b201a26695", "3401dbf3cdfd", "f50dc767c393",
-      "5c82378a50f7", "de2582667e09", "8e75ea4d5334", "236a4aa04dea"
+      "98258e0892fb",
+      "62873a6451a2",
+      "a063cd25be92",
+      "dea048077b86",
+      "a6b201a26695",
+      "3401dbf3cdfd",
+      "f50dc767c393",
+      "5c82378a50f7",
+      "de2582667e09",
+      "8e75ea4d5334",
+      "236a4aa04dea"
     ],
     "accept": [
-      {"carrier": "cookie", "kinds": ["session_state", "optional_initialization"],
-       "why": "session and preference cookies the browser keeps"},
-      {"carrier": "scalar", "producers": ["8e75ea4d5334", "236a4aa04dea"], "kinds": ["optional_initialization"],
-       "why": "a suggestion's response id rides along when the user picks it; search works without it"},
-      {"carrier": "scalar", "producers": ["98258e0892fb", "62873a6451a2", "a063cd25be92"], "kinds": ["optional_initialization"],
-       "why": "search result links carry the query id and keywords to the product page"}
+      {
+        "carrier": "cookie",
+        "kinds": [
+          "session_state",
+          "optional_initialization"
+        ],
+        "why": "session and preference cookies the browser keeps"
+      },
+      {
+        "carrier": "scalar",
+        "producers": [
+          "8e75ea4d5334",
+          "236a4aa04dea"
+        ],
+        "kinds": [
+          "optional_initialization"
+        ],
+        "why": "a suggestion's response id rides along when the user picks it; search works without it"
+      },
+      {
+        "carrier": "scalar",
+        "producers": [
+          "98258e0892fb",
+          "62873a6451a2",
+          "a063cd25be92"
+        ],
+        "kinds": [
+          "optional_initialization"
+        ],
+        "why": "search result links carry the query id and keywords to the product page"
+      }
     ]
   }
 }
