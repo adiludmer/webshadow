@@ -130,6 +130,13 @@ func TestRoleLedgersAreReproducible(t *testing.T) {
 			t.Errorf("%s differs between identical runs", name)
 		}
 	}
+	// The other ledgers and the patch carry no run metadata either.
+	for _, name := range []string{"prerequisites.jsonl", "merges.jsonl", "patch.json"} {
+		la, lb := ledger(t, a, ra.Run, name), ledger(t, b, rb.Run, name)
+		if len(la) == 0 || !bytes.Equal(la, lb) {
+			t.Errorf("%s differs between identical runs", name)
+		}
+	}
 	if lines := bytes.Count(ledger(t, a, ra.Run, "decisions.jsonl"), []byte("\n")); lines != c.Settled+c.Tasks {
 		t.Errorf("decisions.jsonl has %d lines", lines)
 	}
