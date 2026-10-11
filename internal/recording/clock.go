@@ -3,8 +3,8 @@ package recording
 import "time"
 
 // Clock is the single time source for a session. Every stamp it hands out
-// is measured from the same monotonic start, so HTTP and browser records
-// order correctly even if the wall clock jumps.
+// is measured from the same monotonic start, so records order correctly
+// even if the wall clock jumps.
 type Clock struct {
 	start time.Time
 }

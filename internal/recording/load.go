@@ -18,8 +18,7 @@ type Recording struct {
 	Dir       string
 	Session   Session
 	Exchanges []HTTPExchange
-	Events    []BrowserEvent
-	// Truncated is set when a stream ended in a partial line, which happens
+	// Truncated is set when http.jsonl ended in a partial line, which happens
 	// when the recorder was killed mid-write. The partial line is dropped.
 	Truncated bool
 }
@@ -46,18 +45,6 @@ func Load(dir string) (*Recording, error) {
 		return nil, err
 	}
 	r.Truncated = cut
-	cut, err = readLines(filepath.Join(dir, BrowserFile), func(line []byte) error {
-		var ev BrowserEvent
-		if err := json.Unmarshal(line, &ev); err != nil {
-			return err
-		}
-		r.Events = append(r.Events, ev)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	r.Truncated = r.Truncated || cut
 	return r, nil
 }
 

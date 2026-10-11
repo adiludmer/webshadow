@@ -5,7 +5,8 @@
 #
 #   scripts/verify-amazon.sh [chromium] [screenshot dir]
 #
-# Needs Xvfb, python3 with python-xlib, and Go.
+# Needs Xvfb, python3 with python-xlib, and Go. AMAZON_TERMS records a
+# longer session instead (see scripts/amazon-session.py).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 chromium=${1:-/opt/pw-browsers/chromium}

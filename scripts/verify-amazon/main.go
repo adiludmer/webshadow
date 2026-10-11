@@ -57,10 +57,11 @@ var asin = regexp.MustCompile(`data-asin="([A-Z0-9]{10})"`)
 func checkRecording(dir string, rec *recording.Recording) {
 	check(rec.Session.Status == "complete" && !rec.Truncated, "session %s is %s, truncated=%v", rec.Session.ID, rec.Session.Status, rec.Truncated)
 	_, err := os.Stat(filepath.Join(dir, "browser.jsonl"))
-	fmt.Printf("info browser.jsonl present: %v\n", err == nil)
+	check(err != nil, "no browser.jsonl written")
 
 	var incomplete, badBodies, bodies, secFetch int
 	var searches, products []string
+	checkpoints := 0
 	for i := range rec.Exchanges {
 		ex := &rec.Exchanges[i]
 		if ex.Request.Method == "" || ex.Request.URL == "" || ex.Response == nil || ex.Response.Status == 0 || ex.Timing.RequestStart == 0 {
@@ -93,6 +94,8 @@ func checkRecording(dir string, rec *recording.Recording) {
 		switch {
 		case isSearch(path) && isDocument(ex):
 			searches = append(searches, describeSearch(rec, ex))
+		case strings.HasPrefix(path, "/checkpoint/") && isDocument(ex):
+			checkpoints++
 		case strings.Contains(path, "/dp/") && isDocument(ex):
 			products = append(products, fmt.Sprintf("%d", ex.Response.Status))
 		}
@@ -110,6 +113,7 @@ func checkRecording(dir string, rec *recording.Recording) {
 	}
 	check(good >= 2, "search pages: %s (want 2 with 200, >=10 products, no captcha)", strings.Join(searches, "; "))
 	check(contains(products, "200"), "product pages: %v (want a 200)", products)
+	check(checkpoints == 0, "%d bot checkpoint pages", checkpoints)
 	pct := 100 * float64(secFetch) / float64(max(n, 1))
 	check(pct >= 99, "Sec-Fetch-Dest on %d of %d exchanges (%.1f%%)", secFetch, n, pct)
 }

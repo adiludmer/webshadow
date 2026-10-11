@@ -93,8 +93,8 @@ func TestLaunchThroughProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("launch: %v", err)
 	}
-	if !strings.Contains(b.Version, "/") || !strings.HasPrefix(b.DevToolsURL, "ws://127.0.0.1:") {
-		t.Errorf("version %q, DevTools %q", b.Version, b.DevToolsURL)
+	if runtime.GOOS != "windows" && !strings.Contains(b.Version, ".") {
+		t.Errorf("version %q", b.Version)
 	}
 
 	select {
@@ -137,7 +137,7 @@ func TestLaunchThroughProxy(t *testing.T) {
 	if !page || !img {
 		t.Errorf("page recorded=%v, image recorded=%v among %d exchanges", page, img, len(r.Exchanges))
 	}
-	if _, err := os.Stat(filepath.Join(profile, "DevToolsActivePort")); err != nil {
+	if _, err := os.Stat(filepath.Join(profile, "Local State")); err != nil {
 		t.Errorf("profile was not the one Chromium used: %v", err)
 	}
 }
@@ -146,8 +146,9 @@ func TestLaunchFailureShowsBrowserOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script stand-in")
 	}
+	// It answers --version, then dies on launch.
 	exe := filepath.Join(t.TempDir(), "chrome")
-	os.WriteFile(exe, []byte("#!/bin/sh\necho 'No usable sandbox!' >&2\nexit 1\n"), 0o755)
+	os.WriteFile(exe, []byte("#!/bin/sh\n[ \"$1\" = --version ] && echo 'Chromium 1.0' && exit 0\necho 'No usable sandbox!' >&2\nexit 1\n"), 0o755)
 	_, err := Launch(context.Background(), LaunchOptions{
 		Executable: exe, ProfileDir: t.TempDir(), ProxyAddr: "127.0.0.1:1", SPKIHash: "x",
 	})

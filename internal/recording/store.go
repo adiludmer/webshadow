@@ -34,9 +34,7 @@ type Store struct {
 	mu      sync.Mutex
 	session Session
 	http    *os.File
-	browser *os.File
 	httpW   *bufio.Writer
-	browW   *bufio.Writer
 	seq     uint64
 	closed  bool
 }
@@ -68,15 +66,9 @@ func Create(root string) (*Store, error) {
 	if s.http, err = openAppend(filepath.Join(dir, HTTPFile)); err != nil {
 		return nil, err
 	}
-	if s.browser, err = openAppend(filepath.Join(dir, BrowserFile)); err != nil {
-		s.http.Close()
-		return nil, err
-	}
 	s.httpW = bufio.NewWriter(s.http)
-	s.browW = bufio.NewWriter(s.browser)
 	if err := writeSession(dir, &s.session); err != nil {
 		s.http.Close()
-		s.browser.Close()
 		return nil, err
 	}
 	return s, nil
@@ -150,24 +142,6 @@ func (s *Store) AppendExchange(ex *HTTPExchange) error {
 	return writeLine(s.httpW, ex)
 }
 
-// AppendBrowserEvent writes an event to browser.jsonl. It fills in the
-// session id, the sequence number and, when empty, the event id.
-func (s *Store) AppendBrowserEvent(ev *BrowserEvent) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return ErrClosed
-	}
-	s.session.BrowserEvents++
-	if ev.ID == "" {
-		ev.ID = fmt.Sprintf("ev_%06d", s.session.BrowserEvents)
-	}
-	ev.SessionID = s.session.ID
-	s.seq++
-	ev.Seq = s.seq
-	return writeLine(s.browW, ev)
-}
-
 // Flush pushes buffered records to the files, so a crash afterwards loses
 // nothing already appended.
 func (s *Store) Flush() error {
@@ -176,10 +150,10 @@ func (s *Store) Flush() error {
 	if s.closed {
 		return ErrClosed
 	}
-	return errors.Join(s.httpW.Flush(), s.browW.Flush())
+	return s.httpW.Flush()
 }
 
-// Close flushes and syncs both streams and marks the session complete.
+// Close flushes and syncs the exchanges and marks the session complete.
 // Closing twice is a no-op.
 func (s *Store) Close() error {
 	s.mu.Lock()
@@ -188,10 +162,7 @@ func (s *Store) Close() error {
 		return nil
 	}
 	s.closed = true
-	err := errors.Join(
-		s.httpW.Flush(), s.http.Sync(), s.http.Close(),
-		s.browW.Flush(), s.browser.Sync(), s.browser.Close(),
-	)
+	err := errors.Join(s.httpW.Flush(), s.http.Sync(), s.http.Close())
 	end := time.Now().UTC()
 	s.session.EndedAt = &end
 	s.session.Status = StatusComplete

@@ -39,7 +39,7 @@ func runFollow(ctx context.Context, cfg followConfig, stdout, stderr io.Writer) 
 	view := &live.View{Color: cfg.terminal}
 	var res *cluster.Result
 	var rec *recording.Recording
-	lastExchanges, lastEvents := -1, -1
+	lastExchanges := -1
 	tick := time.NewTicker(cfg.interval)
 	defer tick.Stop()
 	for {
@@ -49,14 +49,14 @@ func runFollow(ctx context.Context, cfg followConfig, stdout, stderr io.Writer) 
 			return 1
 		}
 		done := r.Session.Status != recording.StatusRecording
-		if len(r.Exchanges) != lastExchanges || len(r.Events) != lastEvents || done {
+		if len(r.Exchanges) != lastExchanges || done {
 			rec = r
 			res, err = runner.Run([]*recording.Recording{r})
 			if err != nil {
 				fmt.Fprintf(stderr, "webshadow cluster: %v\n", err)
 				return 1
 			}
-			lastExchanges, lastEvents = len(r.Exchanges), len(r.Events)
+			lastExchanges = len(r.Exchanges)
 			draw(view, res, r, done, cfg, stdout)
 		} else if cfg.terminal {
 			// Keep the elapsed time moving.

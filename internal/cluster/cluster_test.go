@@ -60,10 +60,22 @@ func (w *writer) exchange(method, url string, reqHeaders []recording.Header, sta
 	w.now += 10 * ms
 }
 
+// event appends a line to browser.jsonl as the old CDP recorder did.
 func (w *writer) event(typ, url, payload string) {
 	w.t.Helper()
-	ev := &recording.BrowserEvent{Timestamp: recording.Stamp{T: w.now}, TargetID: "T1", Type: typ, PageURL: url, Payload: json.RawMessage(payload)}
-	if err := w.store.AppendBrowserEvent(ev); err != nil {
+	line, err := json.Marshal(map[string]any{
+		"timestamp": recording.Stamp{T: w.now}, "target_id": "T1", "type": typ,
+		"page_url": url, "payload": json.RawMessage(payload),
+	})
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	f, err := os.OpenFile(filepath.Join(w.store.Dir(), "browser.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.Write(append(line, '\n')); err != nil {
 		w.t.Fatal(err)
 	}
 	w.now += 5 * ms
@@ -333,13 +345,20 @@ func TestBrowserEventsAreIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recs[0].Events) == 0 {
-		t.Fatal("the fixture recorded no browser events")
-	}
+	var reloaded []*recording.Recording
 	for _, r := range recs {
-		r.Events = nil
+		file := filepath.Join(r.Dir, "browser.jsonl")
+		if _, err := os.Stat(file); err != nil {
+			t.Fatal("the fixture recorded no browser events")
+		}
+		os.Remove(file)
+		again, err := recording.Load(r.Dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reloaded = append(reloaded, again)
 	}
-	without, err := Run(recs, DefaultOptions())
+	without, err := Run(reloaded, DefaultOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

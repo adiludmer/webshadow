@@ -19,22 +19,23 @@ site's real certificate. Each session gets a fresh browser profile, deleted
 when it stops (`-keep-profile` keeps it).
 
 A recording is a directory under `~/.webshadow/recordings/<session>/`:
-`session.json`, `http.jsonl` (one request/response per line),
-`browser.jsonl` (navigation, page and target events from the DevTools
-protocol, plus clicks, typing and form submissions from a small injected
-script) and `bodies/`. Both streams share one session clock, so
-`recordings timeline` shows each action next to the requests it caused:
+`session.json`, `http.jsonl` (one request/response per line) and `bodies/`.
+Nothing is read from the browser itself: there is no DevTools connection
+and no page script, so a recording holds exactly what a server-side
+recorder in the site's backend would see. `recordings timeline` lists the
+requests and responses, with a line where each page view starts, named by
+how it started (typed URL, user gesture, redirect, script):
 
 ```
-    7.261 browser.input            role=searchbox name=field-keywords label="Search Amazon" value="laptop"
-    7.286 browser.submit           role=search name=site-search form=GET https://www.amazon.com/s/ref=nb_sb_noss
-    7.375 http.request             GET https://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3Daps&field-keywords=laptop
-    7.476 browser.navigation       https://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3Daps&field-keywords=laptop
+    0.396 page.navigation.typed    https://www.amazon.com/
+    0.396 http.request             GET https://www.amazon.com/
+   13.369 page.navigation.user     https://www.amazon.com/s/ref=nb_sb_noss_2?url=search-alias%3Daps&field-keywords=laptop
+   13.369 http.request             GET https://www.amazon.com/s/ref=nb_sb_noss_2?url=search-alias%3Daps&field-keywords=laptop
 ```
 
-Values typed into password, hidden or credential-like fields are never
-recorded in browser events. Recordings hold cookies, tokens and
-form data, so they are readable only by you and never leave the machine.
+Recordings hold cookies, tokens and form data, so they are readable only by
+you and never leave the machine. Recordings made by earlier versions also
+hold `browser.jsonl`; it is ignored.
 
 ```
 webshadow recordings list
@@ -56,8 +57,9 @@ everything somewhere other than `~/.webshadow`.
 `webshadow cluster` groups the requests of one or more recordings into
 request families (one per method, host, path template, query shape and body
 shape, with changing ids as slots), and records the evidence around them:
-values shared between families, each session's ordered trace, episodes
-around clicks, submits and navigations, which families came before which,
+values shared between families, each session's ordered trace, page views
+(from `Sec-Fetch-*`, `Referer` and redirects, so any request/response
+capture works), which families came before which,
 and which values flowed from a response into a later request, cookies
 included. It is fully deterministic and assigns no meanings: the same
 recordings always give the same output, byte for byte.
@@ -65,8 +67,12 @@ recordings always give the same output, byte for byte.
 ```
 webshadow cluster <id> [<id>...]
 webshadow cluster -yaml -out /tmp/shop <id> <id>
+webshadow cluster -hosts amazon.com <id>
 webshadow cluster -follow <id>
 ```
+
+`-hosts` keeps only the given hosts and their subdomains, so a browser
+capture looks like what that site's own backend would record.
 
 `-follow` watches a recording while `webshadow browser` is still recording
 it, in a second terminal: it re-clusters about once a second and redraws the
