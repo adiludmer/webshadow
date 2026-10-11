@@ -17,9 +17,16 @@ import (
 	"strings"
 )
 
-// Version is the clustering schema and algorithm version. Family, link and
-// edge identities hash it, so output from two versions never collides.
-const Version = 1
+// Version is the clustering schema and algorithm version.
+//
+// Version 2 builds page views from request headers instead of browser
+// events.
+const Version = 2
+
+// IDVersion is what identities hash. It moves only when a change would move
+// a value from one family, link or edge identity to another, so output from
+// two such versions never collides; version 2 left families untouched.
+const IDVersion = 1
 
 // Body kinds. A kind says how far a body could be parsed, not what it is for.
 const (
@@ -121,10 +128,10 @@ func SortFields(fields []Field) {
 }
 
 // Hash returns the 12 hex characters that identify a canonical form. The
-// clustering version is mixed in, and so is kind, so a family and a link
+// identity version is mixed in, and so is kind, so a family and a link
 // built from the same string get different ids.
 func Hash(kind, canonical string) string {
-	sum := sha256.Sum256([]byte("webshadow/cluster/v" + strconv.Itoa(Version) + "/" + kind + "\x00" + canonical))
+	sum := sha256.Sum256([]byte("webshadow/cluster/v" + strconv.Itoa(IDVersion) + "/" + kind + "\x00" + canonical))
 	return hex.EncodeToString(sum[:6])
 }
 

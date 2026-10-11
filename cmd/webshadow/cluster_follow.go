@@ -24,6 +24,7 @@ type followConfig struct {
 	out      string
 	root     string
 	withYAML bool
+	opts     cluster.Options
 	// terminal redraws in place with colors; otherwise each changed frame is
 	// printed after the last.
 	terminal bool
@@ -34,7 +35,7 @@ type followConfig struct {
 // redraws the view, until the recording completes or ctx ends. The last
 // result is then written out as a normal cluster run would.
 func runFollow(ctx context.Context, cfg followConfig, stdout, stderr io.Writer) int {
-	runner := cluster.NewRunner(cluster.DefaultOptions())
+	runner := cluster.NewRunner(cfg.opts)
 	view := &live.View{Color: cfg.terminal}
 	var res *cluster.Result
 	var rec *recording.Recording

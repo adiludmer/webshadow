@@ -3,66 +3,83 @@ package trace
 import (
 	"encoding/json"
 	"math/rand"
+	"strings"
 	"testing"
 
 	"github.com/adiludmer/webshadow/internal/cluster/episode"
 	"github.com/adiludmer/webshadow/internal/cluster/model"
-	"github.com/adiludmer/webshadow/internal/recording"
 )
 
 const sec = int64(1e9)
 
-// fixture is one browsing session: a homepage load the user did not click
-// for, a click into a product page, then a search submitted with Enter.
+// req builds one exchange. Headers are given as "Name: value" lines; a
+// "<" prefix marks a response header.
+func req(seq uint64, t float64, url string, status int, headers ...string) model.Observation {
+	o := model.Observation{
+		SessionID: "rec_1", ExchangeID: "ex_" + string(rune('a'+seq)), Seq: seq,
+		RequestStart: int64(t * float64(sec)), Method: "GET", URL: url, Status: status,
+	}
+	for _, h := range headers {
+		resp := strings.HasPrefix(h, "<")
+		name, value, _ := strings.Cut(strings.TrimPrefix(h, "<"), ": ")
+		if resp {
+			o.ResponseHeaders = append(o.ResponseHeaders, model.Pair{Name: name, Value: value})
+		} else {
+			o.RequestHeaders = append(o.RequestHeaders, model.Pair{Name: name, Value: value})
+		}
+	}
+	return o
+}
+
+// Header sets for the common request kinds.
+var (
+	typed = []string{"Sec-Fetch-Dest: document", "Sec-Fetch-Mode: navigate", "Sec-Fetch-Site: none", "Sec-Fetch-User: ?1"}
+	click = []string{"Sec-Fetch-Dest: document", "Sec-Fetch-Mode: navigate", "Sec-Fetch-Site: same-origin", "Sec-Fetch-User: ?1"}
+	auto  = []string{"Sec-Fetch-Dest: document", "Sec-Fetch-Mode: navigate", "Sec-Fetch-Site: same-origin"}
+)
+
+func with(base []string, more ...string) []string {
+	return append(append([]string(nil), base...), more...)
+}
+
+func fetch(referer string) []string {
+	return []string{"Sec-Fetch-Dest: empty", "Sec-Fetch-Mode: cors", "Sec-Fetch-Site: same-origin", "Referer: " + referer}
+}
+
+// fixture is one browsing session: a typed homepage URL that redirects, a
+// click into a product page whose late fetch the homepage still makes, an
+// ad iframe, and a search submitted with Enter.
 func fixture() Session {
-	ex := func(seq uint64, t float64, url string) model.Observation {
-		return model.Observation{
-			SessionID: "rec_1", ExchangeID: "ex_" + string(rune('a'+seq)), Seq: seq,
-			RequestStart: int64(t * float64(sec)), Method: "GET", URL: url,
-		}
-	}
-	ev := func(seq uint64, t float64, typ, target, url, payload string) recording.BrowserEvent {
-		return recording.BrowserEvent{
-			ID: "ev_" + string(rune('a'+seq)), Seq: seq, SessionID: "rec_1",
-			Timestamp: recording.Stamp{T: int64(t * float64(sec))},
-			Type:      typ, TargetID: target, PageURL: url, Payload: json.RawMessage(payload),
-		}
-	}
 	return Session{
 		ID: "rec_1",
 		Observations: []model.Observation{
-			ex(1, 0.30, "https://www.google.com/async/folae"),
-			ex(2, 0.44, "https://shop.test/"),
-			ex(4, 1.50, "https://shop.test/api/recs"),
-			ex(6, 5.10, "https://shop.test/dp/B0FV975MJK"),
-			ex(8, 6.00, "https://shop.test/api/price"),
-			ex(11, 9.20, "https://shop.test/s?k=ring"),
-		},
-		Events: []recording.BrowserEvent{
-			ev(1, 0.10, "Target.targetCreated", "T1", "about:blank", `{"targetInfo":{"targetId":"T1","type":"page"}}`),
-			ev(2, 0.20, "Target.targetCreated", "T2", "", `{"targetInfo":{"targetId":"T2","type":"iframe"}}`),
-			ev(3, 1.10, "Page.frameNavigated", "T1", "https://shop.test/", `{"frame":{"id":"F1","url":"https://shop.test/"}}`),
-			ev(5, 1.20, "Page.frameNavigated", "T2", "https://ads.test/slot", `{"frame":{"id":"F9","url":"https://ads.test/slot"}}`),
-			ev(6, 1.49, "Network.requestWillBeSent", "T1", "https://shop.test/", `{"frameId":"F1","request":{"url":"https://shop.test/api/recs","method":"GET"},"initiator":{"type":"script"}}`),
-			ev(7, 5.00, "interaction.click", "T1", "https://shop.test/", `{"type":"click","target":{"tag":"a"}}`),
-			ev(9, 5.60, "Page.frameNavigated", "T1", "https://shop.test/dp/B0FV975MJK", `{"frame":{"id":"F1","url":"https://shop.test/dp/B0FV975MJK"}}`),
-			ev(10, 9.00, "interaction.enter", "T1", "https://shop.test/dp/B0FV975MJK", `{"type":"enter","value":"ring"}`),
-			ev(12, 9.40, "Page.navigatedWithinDocument", "T1", "https://shop.test/s?k=ring", `{"frameId":"F1","url":"https://shop.test/s?k=ring"}`),
+			req(1, 0.30, "http://shop.test/", 301, with(typed, "<Location: https://shop.test/home")...),
+			req(2, 0.44, "https://shop.test/home", 200, with(typed, "<Content-Type: text/html")...),
+			req(3, 0.60, "https://shop.test/app.js", 200, "Sec-Fetch-Dest: script", "Sec-Fetch-Mode: no-cors", "Referer: https://shop.test/home"),
+			req(4, 1.50, "https://shop.test/api/recs", 200, fetch("https://shop.test/home")...),
+			req(5, 2.00, "https://ads.test/slot", 200, "Sec-Fetch-Dest: iframe", "Sec-Fetch-Mode: navigate", "Sec-Fetch-Site: cross-site", "Referer: https://shop.test/"),
+			req(6, 5.10, "https://shop.test/dp/B0FV975MJK", 200, with(click, "Referer: https://shop.test/home")...),
+			// The homepage's request still in flight names its own page.
+			req(7, 5.20, "https://shop.test/api/log", 200, fetch("https://shop.test/home")...),
+			req(8, 6.00, "https://shop.test/api/price", 200, fetch("https://shop.test/dp/B0FV975MJK")...),
+			req(9, 9.20, "https://shop.test/s?k=ring", 200, with(click, "Referer: https://shop.test/dp/B0FV975MJK")...),
+			req(10, 9.90, "https://shop.test/api/more", 200, fetch("https://shop.test/s?k=ring")...),
 		},
 	}
 }
 
 func families() map[string]string {
 	return map[string]string{
-		"rec_1/ex_b": "fam_google", "rec_1/ex_c": "fam_home", "rec_1/ex_e": "fam_recs",
-		"rec_1/ex_g": "fam_dp", "rec_1/ex_i": "fam_price", "rec_1/ex_l": "fam_search",
+		"rec_1/ex_b": "fam_root", "rec_1/ex_c": "fam_home", "rec_1/ex_d": "fam_js", "rec_1/ex_e": "fam_recs",
+		"rec_1/ex_f": "fam_ad", "rec_1/ex_g": "fam_dp", "rec_1/ex_h": "fam_log", "rec_1/ex_i": "fam_price",
+		"rec_1/ex_j": "fam_search", "rec_1/ex_k": "fam_more",
 	}
 }
 
 func TestTraceKeepsRecordedOrderExactly(t *testing.T) {
 	s := fixture()
 	tr, _ := Build(s, families(), episode.DefaultOptions())
-	want := []string{"fam_google", "fam_home", "fam_recs", "fam_dp", "fam_price", "fam_search"}
+	want := []string{"fam_root", "fam_home", "fam_js", "fam_recs", "fam_ad", "fam_dp", "fam_log", "fam_price", "fam_search", "fam_more"}
 	if len(tr.Steps) != len(want) {
 		t.Fatalf("got %d steps, want %d", len(tr.Steps), len(want))
 	}
@@ -78,65 +95,128 @@ func TestTraceKeepsRecordedOrderExactly(t *testing.T) {
 		model.Observation{SessionID: "rec_1", ExchangeID: "ex_x", Seq: 20, RequestStart: 7 * sec, Method: "GET", URL: "https://shop.test/a"},
 	)
 	tr, _ = Build(s, families(), episode.DefaultOptions())
-	if tr.Steps[5].Ref.ExchangeID != "ex_x" || tr.Steps[6].Ref.ExchangeID != "ex_y" {
-		t.Errorf("tie order = %s, %s; want ex_x then ex_y", tr.Steps[5].Ref.ExchangeID, tr.Steps[6].Ref.ExchangeID)
+	if tr.Steps[8].Ref.ExchangeID != "ex_x" || tr.Steps[9].Ref.ExchangeID != "ex_y" {
+		t.Errorf("tie order = %s, %s; want ex_x then ex_y", tr.Steps[8].Ref.ExchangeID, tr.Steps[9].Ref.ExchangeID)
 	}
 }
 
-func TestEpisodesFollowTriggers(t *testing.T) {
-	tr, eps := Build(fixture(), families(), episode.DefaultOptions())
-	if len(eps) != 4 {
-		t.Fatalf("got %d episodes, want 4 (untriggered, homepage load, click, enter): %+v", len(eps), eps)
-	}
-	type want struct {
-		trigger  string
-		start    int64
-		families []string
-	}
-	wants := []want{
-		{"", 0, []string{"fam_google"}},
-		{"Page.frameNavigated", 440 * sec / 1000, []string{"fam_home", "fam_recs"}},
-		{"interaction.click", 5 * sec, []string{"fam_dp", "fam_price"}},
-		{"interaction.enter", 9 * sec, []string{"fam_search"}},
+type wantView struct {
+	trigger  string
+	url      string
+	families []string
+}
+
+func checkViews(t *testing.T, eps []model.Episode, wants []wantView) {
+	t.Helper()
+	if len(eps) != len(wants) {
+		t.Fatalf("got %d page views, want %d: %+v", len(eps), len(wants), eps)
 	}
 	for i, w := range wants {
 		e := eps[i]
-		trig := ""
+		trig, url := "", ""
 		if e.Trigger != nil {
-			trig = e.Trigger.Type
+			trig, url = e.Trigger.Kind, e.Trigger.URL
 		}
-		if trig != w.trigger || e.Start != w.start || !equal(e.FamilyIDs, w.families) {
-			t.Errorf("episode %d = trigger %q start %d families %v; want %q %d %v", i, trig, e.Start, e.FamilyIDs, w.trigger, w.start, w.families)
+		if trig != w.trigger || url != w.url || !equal(e.FamilyIDs, w.families) {
+			t.Errorf("page view %d = %s %s %v, want %s %s %v", i, trig, url, e.FamilyIDs, w.trigger, w.url, w.families)
 		}
-		if i+1 < len(eps) && e.End != eps[i+1].Start {
-			t.Errorf("episode %d ends at %d, next starts at %d", i, e.End, eps[i+1].Start)
-		}
-	}
-	// The product page navigation came from the click, and the search's
-	// same-document navigation from the Enter: neither starts an episode.
-	// The ad frame's navigation is not the user's at all.
-	if len(tr.Navigations) != 2 {
-		t.Fatalf("got %d navigations, want 2: %+v", len(tr.Navigations), tr.Navigations)
-	}
-	if tr.Navigations[1].Start != 5100*sec/1000 {
-		t.Errorf("product navigation starts at %d, want its document request at 5.1s", tr.Navigations[1].Start)
-	}
-	if got := tr.Steps[4]; got.SinceTrigger != sec || got.NavigationID != tr.Navigations[1].ID {
-		t.Errorf("price step = %+v, want 1s after the click, in the product navigation", got)
-	}
-	if eps[2].FirstStep != 3 || eps[2].LastStep != 4 {
-		t.Errorf("click episode spans steps %d..%d, want 3..4", eps[2].FirstStep, eps[2].LastStep)
 	}
 }
 
-func TestStepsBorrowTheBrowsersInitiator(t *testing.T) {
-	tr, _ := Build(fixture(), families(), episode.DefaultOptions())
-	recs := tr.Steps[2]
-	if recs.Initiator != "script" || recs.FrameID != "F1" || recs.TargetID != "T1" {
-		t.Errorf("recs step = %+v, want the script initiator from CDP", recs)
+func TestPageViewsFromRequestHeaders(t *testing.T) {
+	tr, eps := Build(fixture(), families(), episode.DefaultOptions())
+	checkViews(t, eps, []wantView{
+		// The redirect joins the typed navigation; the iframe and the
+		// homepage's late log call stay in the homepage's view.
+		{model.TriggerTyped, "http://shop.test/", []string{"fam_ad", "fam_home", "fam_js", "fam_log", "fam_recs", "fam_root"}},
+		{model.TriggerUser, "https://shop.test/dp/B0FV975MJK", []string{"fam_dp", "fam_price"}},
+		{model.TriggerUser, "https://shop.test/s?k=ring", []string{"fam_more", "fam_search"}},
+	})
+	if len(tr.Navigations) != 3 {
+		t.Fatalf("got %d navigations, want 3", len(tr.Navigations))
 	}
-	if tr.Steps[0].Initiator != "" {
-		t.Errorf("an exchange with no browser report got initiator %q", tr.Steps[0].Initiator)
+	home := tr.Navigations[0]
+	if home.URL != "https://shop.test/home" || home.Document != "ex_c" || !equal(home.Redirects, []string{"ex_b"}) {
+		t.Errorf("homepage navigation = %s document %s redirects %v; want https://shop.test/home, ex_c, [ex_b]", home.URL, home.Document, home.Redirects)
+	}
+	kinds := map[string]string{}
+	for _, s := range tr.Steps {
+		kinds[s.FamilyID] = s.Kind
+	}
+	for fam, want := range map[string]string{"fam_home": "document", "fam_js": "script", "fam_recs": "fetch", "fam_ad": "iframe"} {
+		if kinds[fam] != want {
+			t.Errorf("%s kind = %q, want %q", fam, kinds[fam], want)
+		}
+	}
+	if got := tr.Steps[7]; got.SinceTrigger != 900*sec/1000 || got.NavigationID != tr.Navigations[1].ID {
+		t.Errorf("price step: since trigger %d, navigation %s; want 0.9s in the product page", got.SinceTrigger, got.NavigationID)
+	}
+}
+
+func TestNavigationWithoutGestureAndRedirect(t *testing.T) {
+	s := Session{ID: "rec_1", Observations: []model.Observation{
+		req(1, 1, "https://shop.test/cart", 200, click...),
+		req(2, 2, "https://shop.test/checkout", 302, with(auto, "<Location: /signin?to=checkout")...),
+		req(3, 2.1, "https://shop.test/signin?to=checkout", 200, auto...),
+		req(4, 5, "https://shop.test/refresh", 200, auto...),
+	}}
+	_, eps := Build(s, nil, episode.DefaultOptions())
+	checkViews(t, eps, []wantView{
+		{model.TriggerUser, "https://shop.test/cart", []string{}},
+		{model.TriggerRedirect, "https://shop.test/checkout", []string{}},
+		{model.TriggerLink, "https://shop.test/refresh", []string{}},
+	})
+	if len(eps[1].ExchangeIDs) != 2 {
+		t.Errorf("redirect page view holds %v, want both chain exchanges", eps[1].ExchangeIDs)
+	}
+}
+
+func TestTrafficBeforeTheFirstPageView(t *testing.T) {
+	s := Session{ID: "rec_1", Observations: []model.Observation{
+		req(1, 0.1, "https://shop.test/api/ping", 200, fetch("https://shop.test/x")...),
+		req(2, 1, "https://shop.test/", 200, typed...),
+	}}
+	_, eps := Build(s, map[string]string{"rec_1/ex_b": "fam_ping"}, episode.DefaultOptions())
+	checkViews(t, eps, []wantView{
+		{"", "", []string{"fam_ping"}},
+		{model.TriggerTyped, "https://shop.test/", []string{}},
+	})
+}
+
+func TestWithoutSecFetchHTMLStartsPageViews(t *testing.T) {
+	html := []string{"Accept: text/html,application/xhtml+xml,*/*;q=0.8", "<Content-Type: text/html; charset=utf-8"}
+	s := Session{ID: "rec_1", Observations: []model.Observation{
+		req(1, 1, "https://shop.test/", 200, html...),
+		req(2, 1.2, "https://shop.test/api/a", 200, "Accept: application/json", "<Content-Type: text/html"),
+		req(3, 4, "https://shop.test/old", 301, "Accept: text/html", "<Location: https://shop.test/new"),
+		req(4, 4.1, "https://shop.test/new", 200, html...),
+		// Wants JSON first, so not a page even though HTML came back.
+		req(5, 6, "https://shop.test/api/b", 200, "Accept: application/json, text/html;q=0.5", "<Content-Type: text/html"),
+	}}
+	tr, eps := Build(s, nil, episode.DefaultOptions())
+	checkViews(t, eps, []wantView{
+		{model.TriggerHTML, "https://shop.test/", []string{}},
+		{model.TriggerHTML, "https://shop.test/old", []string{}},
+	})
+	if len(eps[1].ExchangeIDs) != 3 || len(tr.Navigations[1].Redirects) != 1 {
+		t.Errorf("second page view holds %v with redirects %v; want old, new and api/b with one redirect", eps[1].ExchangeIDs, tr.Navigations[1].Redirects)
+	}
+}
+
+func TestWithNoNavigationSignalGapsSplitPageViews(t *testing.T) {
+	s := Session{ID: "rec_1", Observations: []model.Observation{
+		req(1, 1, "https://api.test/a", 200),
+		req(2, 20, "https://api.test/b", 200),
+		req(3, 51, "https://api.test/c", 200),
+		req(4, 52, "https://api.test/d", 200),
+	}}
+	tr, eps := Build(s, nil, episode.DefaultOptions())
+	checkViews(t, eps, []wantView{
+		{model.TriggerGap, "https://api.test/a", []string{}},
+		{model.TriggerGap, "https://api.test/c", []string{}},
+	})
+	if len(tr.Navigations) != 0 || eps[0].NavigationID != "" {
+		t.Errorf("gap page views got navigations: %+v", tr.Navigations)
 	}
 }
 
@@ -146,7 +226,6 @@ func TestSameInputsGiveTheSameTraceAndEpisodes(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		s := fixture()
 		rng.Shuffle(len(s.Observations), func(a, b int) { s.Observations[a], s.Observations[b] = s.Observations[b], s.Observations[a] })
-		rng.Shuffle(len(s.Events), func(a, b int) { s.Events[a], s.Events[b] = s.Events[b], s.Events[a] })
 		if got := encode(t, s); got != want {
 			t.Fatalf("permutation %d changed the trace or episodes", i)
 		}

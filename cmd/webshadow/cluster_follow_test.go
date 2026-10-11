@@ -47,7 +47,7 @@ func TestFollowWatchesARecordingUntilItCompletes(t *testing.T) {
 	code := make(chan int, 1)
 	go func() {
 		code <- runFollow(context.Background(), followConfig{
-			dir: store.Dir(), interval: 10 * time.Millisecond, root: root,
+			dir: store.Dir(), interval: 10 * time.Millisecond, root: root, opts: cluster.DefaultOptions(),
 			size: live.Size{Width: 120, Height: 40},
 		}, &stdout, &stderr)
 	}()

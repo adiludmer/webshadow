@@ -420,8 +420,8 @@ func roleEvidence(in *input.Input, f *model.RequestFamily, e *evidence.Entry, ep
 	if len(episodes) > 0 {
 		sort.Strings(episodes)
 		text := "browser context: triggered by " + counts(e.Episodes.Triggers)
-		if len(e.Episodes.Initiators) > 0 {
-			text += "; initiated by " + counts(e.Episodes.Initiators)
+		if len(e.Episodes.Kinds) > 0 {
+			text += "; request kinds " + counts(e.Episodes.Kinds)
 		}
 		text += fmt.Sprintf("; in %d episodes", len(episodes))
 		add(ir.Ref(ir.RefEpisode, episodes[0]), text)

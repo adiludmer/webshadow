@@ -133,15 +133,17 @@ type Flow struct {
 	Example string   `json:"example,omitempty"`
 }
 
-// Episodes summarizes the browser context of a family's observations.
+// Episodes summarizes the page views a family's observations ran in.
 type Episodes struct {
-	// Triggers counts observations by the type of their episode's trigger;
-	// "untriggered" is traffic before a session's first trigger.
+	// Triggers counts observations by how their page view started;
+	// "untriggered" is traffic before a session's first page view.
 	Triggers []Count `json:"triggers"`
-	// MedianSinceTrigger is the median gap from trigger to request over the
-	// triggered observations, in nanoseconds.
-	MedianSinceTrigger int64   `json:"median_since_trigger"`
-	Initiators         []Count `json:"initiators,omitempty"`
+	// MedianSinceTrigger is the median gap from the page view's start to
+	// the request over the triggered observations, in nanoseconds.
+	MedianSinceTrigger int64 `json:"median_since_trigger"`
+	// Kinds counts observations by request kind (document, fetch, script
+	// and so on), from their Sec-Fetch headers.
+	Kinds []Count `json:"kinds,omitempty"`
 }
 
 // Count is one counted key.
@@ -250,12 +252,12 @@ func Build(in Input, opts Options) Pack {
 		e.Successors, e.Omitted.Successors = neighbors(succs[f.ID], false, static, routes, &e.Omitted.StaticNeighbors, opts)
 		c := ctx[f.ID]
 		if c == nil {
-			c = &familyContext{triggers: map[string]int{}, initiators: map[string]int{}, traces: map[string]bool{}, episodes: map[string]bool{}}
+			c = &familyContext{triggers: map[string]int{}, kinds: map[string]int{}, traces: map[string]bool{}, episodes: map[string]bool{}}
 		}
 		e.Episodes = Episodes{
 			Triggers:           counts(c.triggers),
 			MedianSinceTrigger: median(c.since),
-			Initiators:         counts(c.initiators),
+			Kinds:              counts(c.kinds),
 		}
 		e.Refs = Refs{Observations: f.Observations, Traces: sortedKeys(c.traces), Episodes: len(c.episodes)}
 		if len(e.Refs.Observations) > opts.Refs {
@@ -267,18 +269,18 @@ func Build(in Input, opts Options) Pack {
 }
 
 type familyContext struct {
-	triggers   map[string]int
-	initiators map[string]int
-	since      []int64
-	traces     map[string]bool
-	episodes   map[string]bool
+	triggers map[string]int
+	kinds    map[string]int
+	since    []int64
+	traces   map[string]bool
+	episodes map[string]bool
 }
 
 func browserContext(in Input) map[string]*familyContext {
 	trigger := map[string]string{}
 	for _, ep := range in.Episodes {
 		if ep.Trigger != nil {
-			trigger[ep.ID] = ep.Trigger.Type
+			trigger[ep.ID] = ep.Trigger.Kind
 		} else {
 			trigger[ep.ID] = untriggered
 		}
@@ -291,7 +293,7 @@ func browserContext(in Input) map[string]*familyContext {
 			}
 			c := out[s.FamilyID]
 			if c == nil {
-				c = &familyContext{triggers: map[string]int{}, initiators: map[string]int{}, traces: map[string]bool{}, episodes: map[string]bool{}}
+				c = &familyContext{triggers: map[string]int{}, kinds: map[string]int{}, traces: map[string]bool{}, episodes: map[string]bool{}}
 				out[s.FamilyID] = c
 			}
 			t := trigger[s.EpisodeID]
@@ -302,8 +304,8 @@ func browserContext(in Input) map[string]*familyContext {
 			if t != untriggered {
 				c.since = append(c.since, s.SinceTrigger)
 			}
-			if s.Initiator != "" {
-				c.initiators[s.Initiator]++
+			if s.Kind != "" {
+				c.kinds[s.Kind]++
 			}
 			c.traces[tr.ID] = true
 			if s.EpisodeID != "" {

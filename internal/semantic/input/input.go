@@ -105,7 +105,9 @@ func ReadRaw(dir string) (*Raw, error) {
 	if err := redecode(raw.Docs["manifest.json"], &m); err != nil {
 		return nil, fmt.Errorf("manifest.json: %w", err)
 	}
-	if m.Version != model.Version {
+	// Version 1 differs only in how episodes were built (browser events
+	// rather than request headers); its families and links are the same.
+	if m.Version != model.Version && m.Version != 1 {
 		return nil, fmt.Errorf("%s: clustering output version %d, this build reads version %d; re-run webshadow cluster", dir, m.Version, model.Version)
 	}
 	if m.ID == "" {

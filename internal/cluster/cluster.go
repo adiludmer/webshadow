@@ -27,20 +27,26 @@ import (
 	"github.com/adiludmer/webshadow/internal/recording"
 )
 
-// Input describes one recording a result was built from.
+// Input describes one recording a result was built from. Browser events a
+// recording may hold are not read: clustering uses only what a server
+// receives and sends.
 type Input struct {
-	SessionID     string `json:"session_id"`
-	Exchanges     int    `json:"exchanges"`
-	BrowserEvents int    `json:"browser_events"`
-	Truncated     bool   `json:"truncated,omitempty"`
+	SessionID string `json:"session_id"`
+	// Exchanges counts the exchanges clustered; Skipped those the host
+	// filter left out.
+	Exchanges int  `json:"exchanges"`
+	Skipped   int  `json:"skipped,omitempty"`
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // Manifest describes a result without repeating it.
 type Manifest struct {
-	Version int     `json:"version"`
-	ID      string  `json:"id"`
-	Inputs  []Input `json:"inputs"`
-	Counts  Counts  `json:"counts"`
+	Version int    `json:"version"`
+	ID      string `json:"id"`
+	// Hosts is the host filter the result was built with, if any.
+	Hosts  []string `json:"hosts,omitempty"`
+	Inputs []Input  `json:"inputs"`
+	Counts Counts   `json:"counts"`
 }
 
 // Counts summarizes a result's size.
@@ -75,6 +81,10 @@ type Options struct {
 	Values    values.Options
 	Episode   episode.Options
 	Evidence  evidence.Options
+	// Hosts, when set, keeps only exchanges with these hosts or their
+	// subdomains, so a browser capture looks like what the site's own
+	// backend would record.
+	Hosts []string
 }
 
 // DefaultOptions is what `webshadow cluster` uses.
@@ -125,9 +135,15 @@ func (r *Runner) Run(recs []*recording.Recording) (*Result, error) {
 	sources := map[string]source{}
 	var obs []model.Observation
 	bySession := map[string][]model.Observation{}
+	skipped := map[string]int{}
+	hosts := normalHosts(r.opts.Hosts)
 	for _, rec := range recs {
 		for i := range rec.Exchanges {
 			ex := &rec.Exchanges[i]
+			if !ownHost(ex.Request.Host, hosts) {
+				skipped[rec.Session.ID]++
+				continue
+			}
 			if ex.SessionID == "" {
 				ex.SessionID = rec.Session.ID
 			}
@@ -184,7 +200,6 @@ func (r *Runner) Run(recs []*recording.Recording) (*Result, error) {
 		tr, eps := trace.Build(trace.Session{
 			ID:           rec.Session.ID,
 			Observations: bySession[rec.Session.ID],
-			Events:       rec.Events,
 		}, fams.ByObservation, r.opts.Episode)
 		res.Traces = append(res.Traces, tr)
 		res.Episodes = append(res.Episodes, eps...)
@@ -196,13 +211,13 @@ func (r *Runner) Run(recs []*recording.Recording) (*Result, error) {
 	inputs := make([]Input, 0, len(recs))
 	for _, rec := range recs {
 		inputs = append(inputs, Input{
-			SessionID:     rec.Session.ID,
-			Exchanges:     len(rec.Exchanges),
-			BrowserEvents: len(rec.Events),
-			Truncated:     rec.Truncated,
+			SessionID: rec.Session.ID,
+			Exchanges: len(rec.Exchanges) - skipped[rec.Session.ID],
+			Skipped:   skipped[rec.Session.ID],
+			Truncated: rec.Truncated,
 		})
 	}
-	res.Manifest = Manifest{Version: model.Version, ID: inputID(inputs), Inputs: inputs}
+	res.Manifest = Manifest{Version: model.Version, ID: inputID(inputs, hosts), Hosts: hosts, Inputs: inputs}
 	res.Evidence = evidence.Build(evidence.Input{
 		Families:  res.Families,
 		Links:     res.Links,
@@ -232,15 +247,46 @@ func (r *Runner) Run(recs []*recording.Recording) (*Result, error) {
 
 // inputID names a result after what went into it, so the same recordings
 // map to the same output directory and a recording that grew does not.
-func inputID(inputs []Input) string {
+func inputID(inputs []Input, hosts []string) string {
 	var b strings.Builder
 	for _, in := range inputs {
 		b.WriteString(in.SessionID)
 		b.WriteByte(':')
 		b.WriteString(strconv.Itoa(in.Exchanges))
-		b.WriteByte(':')
-		b.WriteString(strconv.Itoa(in.BrowserEvents))
 		b.WriteByte(';')
 	}
-	return "cl_" + model.Hash("input", b.String())
+	if len(hosts) > 0 {
+		b.WriteString("hosts=" + strings.Join(hosts, ","))
+	}
+	return "cl_" + model.Hash("input", "v"+strconv.Itoa(model.Version)+"/"+b.String())
+}
+
+// normalHosts lowercases, deduplicates and sorts a host filter.
+func normalHosts(hosts []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, h := range hosts {
+		h = strings.Trim(strings.ToLower(strings.TrimSpace(h)), ".")
+		if h != "" && !seen[h] {
+			seen[h] = true
+			out = append(out, h)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ownHost reports whether host is one of the normalized hosts or a
+// subdomain of one. An empty filter keeps every host.
+func ownHost(host string, hosts []string) bool {
+	if len(hosts) == 0 {
+		return true
+	}
+	host = strings.ToLower(host)
+	for _, h := range hosts {
+		if host == h || strings.HasSuffix(host, "."+h) {
+			return true
+		}
+	}
+	return false
 }
