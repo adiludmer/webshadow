@@ -345,7 +345,7 @@ func slotNames(slots []model.Slot) string {
 
 // roleEvidence lists what the model may cite, in a fixed order: the
 // request, its response variants, shared values, the families around it,
-// and the browser context.
+// and the page views it ran in.
 func roleEvidence(in *input.Input, f *model.RequestFamily, e *evidence.Entry, episodes []string) []decide.Evidence {
 	var items []decide.Evidence
 	add := func(ref, text string) {
@@ -419,11 +419,11 @@ func roleEvidence(in *input.Input, f *model.RequestFamily, e *evidence.Entry, ep
 	}
 	if len(episodes) > 0 {
 		sort.Strings(episodes)
-		text := "browser context: triggered by " + counts(e.Episodes.Triggers)
+		text := "page views: " + named(e.Episodes.Triggers, triggerWords)
 		if len(e.Episodes.Kinds) > 0 {
-			text += "; request kinds " + counts(e.Episodes.Kinds)
+			text += "; sent as " + named(e.Episodes.Kinds, kindWords)
 		}
-		text += fmt.Sprintf("; in %d episodes", len(episodes))
+		text += fmt.Sprintf("; in %d page views", len(episodes))
 		add(ir.Ref(ir.RefEpisode, episodes[0]), text)
 	}
 	return items
@@ -439,10 +439,34 @@ func route(in *input.Input, family string) string {
 	return family
 }
 
-func counts(cs []evidence.Count) string {
+// triggerWords and kindWords say in words how a page view started and what
+// a request was for; keys they lack are printed as recorded.
+var (
+	triggerWords = map[string]string{
+		model.TriggerUser:     "loaded by a page view after a user gesture",
+		model.TriggerTyped:    "loaded by a page view from a typed URL or bookmark",
+		model.TriggerLink:     "loaded by a page view without a user gesture",
+		model.TriggerRedirect: "loaded by a redirected page view without a user gesture",
+		model.TriggerHTML:     "loaded by an HTML page view",
+		model.TriggerGap:      "loaded in a span of traffic with no page view",
+		"untriggered":         "before the first page view",
+	}
+	kindWords = map[string]string{
+		model.KindDocument:  "page navigation",
+		model.KindFetch:     "fetch/XHR",
+		model.KindWebSocket: "WebSocket",
+	}
+)
+
+// named prints counts with their keys in words.
+func named(cs []evidence.Count, words map[string]string) string {
 	parts := make([]string, len(cs))
 	for i, c := range cs {
-		parts[i] = fmt.Sprintf("%s %d", c.Key, c.Count)
+		k := c.Key
+		if w, ok := words[k]; ok {
+			k = w
+		}
+		parts[i] = fmt.Sprintf("%s %d", k, c.Count)
 	}
 	return strings.Join(parts, ", ")
 }

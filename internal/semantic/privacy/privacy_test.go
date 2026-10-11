@@ -36,7 +36,7 @@ const sequences = `[
 ]`
 
 func TestRewriteTagsSecretsEverywhere(t *testing.T) {
-	r := New("cl_1", decode(t, links), decode(t, sequences))
+	r := New("cl_1", decode(t, links), decode(t, sequences), nil)
 	doc := decode(t, `{
 	  "a": "133-9148859-8608158-long",
 	  "url": "https://shop.test/x?sid=133-9148859-8608158-long&k=tv",
@@ -79,9 +79,9 @@ func TestRewriteTagsSecretsEverywhere(t *testing.T) {
 }
 
 func TestTagsAreStablePerScopeAndIdempotent(t *testing.T) {
-	a := New("cl_1", decode(t, links), nil)
-	b := New("cl_1", decode(t, links), nil)
-	c := New("cl_2", decode(t, links), nil)
+	a := New("cl_1", decode(t, links), nil, nil)
+	b := New("cl_1", decode(t, links), nil, nil)
+	c := New("cl_2", decode(t, links), nil, nil)
 	v := "133-9148859-8608158-long"
 	if a.String(v) != b.String(v) {
 		t.Error("same scope gave different tags")
@@ -91,7 +91,7 @@ func TestTagsAreStablePerScopeAndIdempotent(t *testing.T) {
 	}
 	tagged := a.String(v)
 	// A redacted document read again is left alone.
-	again := New("cl_1", decode(t, `[{"value": "`+tagged+`", "occurrences": [{"location": {"part": "cookie", "pattern": "session-id"}}]}]`), nil)
+	again := New("cl_1", decode(t, `[{"value": "`+tagged+`", "occurrences": [{"location": {"part": "cookie", "pattern": "session-id"}}]}]`), nil, nil)
 	if again.Secrets() != 0 || again.String(tagged) != tagged {
 		t.Error("a tag was treated as a secret")
 	}
@@ -116,5 +116,23 @@ func TestSecretLocation(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("%s.%s: got %v", tc.part, tc.pattern, got)
 		}
+	}
+}
+
+// A one-time token seen once links nothing, so only its slot shows it is
+// secret; it is redacted wherever it appears, URLs included.
+func TestSecretSlotExamplesAreRedacted(t *testing.T) {
+	token := "v1.Q2hlY2twb2ludFRva2VuRXhhbXBsZQ"
+	families := `[{"slots": [
+		{"location": "query.token", "examples": ["` + token + `"]},
+		{"location": "query.k", "examples": ["laptop stand"]}
+	]}]`
+	r := New("cl_1", nil, nil, decode(t, families))
+	url := "https://shop.test/checkpoint/continue?token=" + token
+	if got := r.String(url); strings.Contains(got, token) || !strings.Contains(got, "{{redacted:query.token:") {
+		t.Errorf("url = %s", got)
+	}
+	if got := r.String("laptop stand"); got != "laptop stand" {
+		t.Errorf("an ordinary slot value was redacted: %s", got)
 	}
 }

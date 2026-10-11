@@ -120,7 +120,7 @@ func ReadRaw(dir string) (*Raw, error) {
 // tag, keyed by the clustering result id.
 func (r *Raw) Redact() privacy.Stats {
 	id := str(obj(r.Docs["manifest.json"])["id"])
-	red := privacy.New(id, r.Docs["links.json"], r.Docs["sequences.json"])
+	red := privacy.New(id, r.Docs["links.json"], r.Docs["sequences.json"], r.Docs["families.json"])
 	for _, name := range Files {
 		r.Docs[name] = red.Rewrite(r.Docs[name])
 	}

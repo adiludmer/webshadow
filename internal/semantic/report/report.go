@@ -255,7 +255,7 @@ func Markdown(w io.Writer, r *Report) {
 		}
 		fmt.Fprintln(w)
 	}
-	fmt.Fprintf(w, "Coverage: %d of %d browsing episodes with user-facing traffic map to an operation (score %.3f).", r.Coverage.Covered, r.Coverage.Relevant, r.Coverage.Score)
+	fmt.Fprintf(w, "Coverage: %d of %d page views with user-facing traffic map to an operation (score %.3f).", r.Coverage.Covered, r.Coverage.Relevant, r.Coverage.Score)
 	if len(r.Coverage.Uncovered) > 0 {
 		fmt.Fprintf(w, " Uncovered: %s.", strings.Join(r.Coverage.Uncovered, ", "))
 	}
