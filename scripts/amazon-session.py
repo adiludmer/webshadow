@@ -26,9 +26,10 @@ from Xlib import X, XK, display
 from Xlib.ext import xtest
 
 # Positions in a 1366x900 window with Chromium's default chrome and the
-# --no-sandbox warning bar.
+# --no-sandbox warning bar. FIRST_RESULT is on the first result's image,
+# which stays in place whether or not a sponsored banner tops the results.
 SEARCH_BOX = (495, 178)
-FIRST_RESULT = (760, 700)
+FIRST_RESULT = (400, 820)
 
 PACE = float(os.environ.get("AMAZON_PACE", "1"))
 
