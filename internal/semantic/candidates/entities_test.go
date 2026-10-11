@@ -10,7 +10,8 @@ import (
 // Families of the Amazon fixture.
 const (
 	productPage   = "dea048077b86" // /<title>/dp/<asin>, the search result click
-	productAPI    = "5c82378a50f7" // data.amazon.com product, asin in path.4
+	sponsored     = "62a0b4fa0fdc" // /<title>/dp/<asin>, a sponsored result click
+	searchResults = "c8a90b9ee17b" // /s results page
 	suggestFamily = "8e75ea4d5334" // /suggestions as the user types
 )
 
@@ -34,15 +35,16 @@ func TestProductIDsFormOneKeyClass(t *testing.T) {
 		t.Errorf("product id class: shape %q, held out %+v", asin.Shape, asin.HeldOut)
 	}
 	for _, want := range []string{
-		"fam:" + productAPI + "#request.path.4",
+		"fam:" + sponsored + "#request.path.2",
 		"fam:236a4aa04dea#request.query.asin",
-		"fam:f50dc767c393#request.path.1",
+		"fam:9b2be3c65d61#request.path.1",
 	} {
 		if !contains(asin.Consumers, want) {
 			t.Errorf("product id class lacks %s", want)
 		}
 	}
-	if !contains(asin.Producers, "fam:"+productAPI+"#response.body.entity.asin") {
+	// The results page lists the ids the clicks then carry.
+	if !contains(asin.Producers, "fam:"+searchResults+"#response.text") {
 		t.Errorf("product id class producers = %v", asin.Producers)
 	}
 	// Search words, request ids and parent product ids stay out of it.
@@ -93,10 +95,11 @@ func TestEntityCandidatesOnAmazon(t *testing.T) {
 	es, rels := Entities(in, KeyClasses(in), nil)
 
 	product := entityNamed(t, es, "asin")
-	if product.Kind != EntityKeyed || len(product.Fields) == 0 {
+	// No JSON response describes a product here, so it has no fields.
+	if product.Kind != EntityKeyed {
 		t.Errorf("product entity = %+v", product)
 	}
-	for _, n := range []string{"product", "landingAsin", "pd_rd_i"} {
+	for _, n := range []string{"contentID", "landingAsin", "pd_rd_i"} {
 		if !contains(product.Names, n) {
 			t.Errorf("product names %v lack %s", product.Names, n)
 		}

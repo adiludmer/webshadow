@@ -17,7 +17,7 @@ func TestAnalyzeAndInspect(t *testing.T) {
 	if code := run([]string{"analyze", semanticFixture}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
-	for _, want := range []string{"Analysed cl_a6df5fb6df42: 294 families (151 static)", "Revision: r0001 (new)"} {
+	for _, want := range []string{"Analysed cl_9c551b949b63: 83 families (27 static)", "Coverage: 39 of 39 page views", "Revision: r0001 (new)"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("missing %q in:\n%s", want, stdout.String())
 		}

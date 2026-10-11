@@ -34,9 +34,11 @@ const MinSecretLen = 8
 const minSubstringLen = 16
 
 var (
-	tagPattern   = regexp.MustCompile(`^\{\{redacted:[^{}]+\}\}$`)
-	jwtPattern   = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`)
-	emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
+	tagPattern = regexp.MustCompile(`^\{\{redacted:[^{}]+\}\}$`)
+	jwtPattern = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`)
+	// An address typed into a search box also travels URL-encoded, once
+	// in a query and twice inside an encoded link.
+	emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+-]+(@|%40|%2540)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
 )
 
 // sensitiveNames are substrings that mark a header, query key or body field

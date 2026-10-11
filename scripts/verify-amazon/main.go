@@ -64,7 +64,9 @@ func checkRecording(dir string, rec *recording.Recording) {
 	checkpoints := 0
 	for i := range rec.Exchanges {
 		ex := &rec.Exchanges[i]
-		if ex.Request.Method == "" || ex.Request.URL == "" || ex.Response == nil || ex.Response.Status == 0 || ex.Timing.RequestStart == 0 {
+		// An exchange ends in a response with a status, or in an error.
+		answered := (ex.Response != nil && ex.Response.Status != 0) || ex.Error != ""
+		if ex.Request.Method == "" || ex.Request.URL == "" || !answered || ex.Timing.RequestStart == 0 {
 			incomplete++
 		}
 		for _, h := range ex.Request.Headers {
@@ -101,7 +103,7 @@ func checkRecording(dir string, rec *recording.Recording) {
 		}
 	}
 	n := len(rec.Exchanges)
-	check(n > 0 && incomplete == 0, "%d exchanges, %d missing method, url, status or request_start", n, incomplete)
+	check(n > 0 && incomplete == 0, "%d exchanges, %d missing method, url, status or error, or request_start", n, incomplete)
 	check(badBodies == 0, "%d bodies, %d missing or not matching their sha256", bodies, badBodies)
 	good := 0
 	for _, s := range searches {

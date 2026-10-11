@@ -136,3 +136,16 @@ func TestSecretSlotExamplesAreRedacted(t *testing.T) {
 		t.Errorf("an ordinary slot value was redacted: %s", got)
 	}
 }
+
+// An address typed into a search box travels URL-encoded too.
+func TestEncodedEmailsAreRedacted(t *testing.T) {
+	r := New("cl_1", nil, nil, nil)
+	doc := decode(t, `{
+	  "q": "/s?k=tv&sprefix=tv%2Bsomeone%40example.com%2Caps",
+	  "link": "/dp/x?u=%2Fs%3Fsprefix%3Dsomeone%2540example.com"
+	}`)
+	data, _ := json.Marshal(r.Rewrite(doc))
+	if s := string(data); strings.Contains(s, "example.com") || !strings.Contains(s, "k=tv") {
+		t.Errorf("encoded address: %s", s)
+	}
+}
