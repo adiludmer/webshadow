@@ -83,13 +83,31 @@ func record(t *testing.T, root string, s session) *recording.Recording {
 	cookie := []recording.Header{{Name: "Cookie", Value: "session-id=" + s.cookie}}
 	html := []recording.Header{{Name: "Content-Type", Value: "text/html; charset=utf-8"}}
 	js := []recording.Header{{Name: "Content-Type", Value: "application/json"}}
+	h := func(base []recording.Header, pairs ...string) []recording.Header {
+		out := append([]recording.Header(nil), base...)
+		for i := 0; i+1 < len(pairs); i += 2 {
+			out = append(out, recording.Header{Name: pairs[i], Value: pairs[i+1]})
+		}
+		return out
+	}
+	nav := func(site, referer string) []string {
+		return []string{"Sec-Fetch-Dest", "document", "Sec-Fetch-Mode", "navigate", "Sec-Fetch-Site", site, "Sec-Fetch-User", "?1", "Referer", referer}
+	}
+	fetch := func(referer string) []string {
+		return []string{"Sec-Fetch-Dest", "empty", "Sec-Fetch-Mode", "cors", "Sec-Fetch-Site", "same-origin", "Referer", referer}
+	}
+	script := func(referer string) []string {
+		return []string{"Sec-Fetch-Dest", "script", "Sec-Fetch-Mode", "no-cors", "Sec-Fetch-Site", "same-origin", "Referer", referer}
+	}
 
+	// Browser events are written as the old recorder did; clustering must
+	// not read them.
 	w.event("Target.targetCreated", "about:blank", `{"targetInfo":{"targetId":"T1","type":"page"}}`)
-	w.exchange("GET", "https://shop.test/", nil, 200,
+	w.exchange("GET", "https://shop.test/", h(nil, "Sec-Fetch-Dest", "document", "Sec-Fetch-Mode", "navigate", "Sec-Fetch-Site", "none", "Sec-Fetch-User", "?1"), 200,
 		append([]recording.Header{{Name: "Set-Cookie", Value: "session-id=" + s.cookie + "; Path=/"}}, html...),
 		"text/html", []byte("<html><body>welcome</body></html>"))
 	w.navigate("https://shop.test/")
-	w.exchange("GET", "https://shop.test/static/app.js", nil, 200,
+	w.exchange("GET", "https://shop.test/static/app.js", h(nil, script("https://shop.test/")...), 200,
 		[]recording.Header{{Name: "Content-Type", Value: "application/javascript"}},
 		"application/javascript", []byte("console.log(1)"))
 
@@ -99,19 +117,20 @@ func record(t *testing.T, root string, s session) *recording.Recording {
 	for i, p := range s.products {
 		items[i] = fmt.Sprintf(`{"id":%q,"rank":%d}`, p, i+1)
 	}
-	w.exchange("GET", "https://shop.test/s?k="+s.term, cookie, 200, js, "application/json",
+	w.exchange("GET", "https://shop.test/s?k="+s.term, h(cookie, fetch("https://shop.test/")...), 200, js, "application/json",
 		[]byte(`{"items":[`+strings.Join(items, ",")+`],"more":true}`))
 
 	for _, p := range s.products {
 		w.now += 1500 * ms
+		page := "https://shop.test/dp/" + p
 		w.event("interaction.click", "https://shop.test/", `{"type":"click","target":{"tag":"a"}}`)
-		w.exchange("GET", "https://shop.test/dp/"+p, cookie, 200, html, "text/html",
+		w.exchange("GET", page, h(cookie, nav("same-origin", "https://shop.test/")...), 200, html, "text/html",
 			[]byte("<html><body>item "+p+"</body></html>"))
-		w.navigate("https://shop.test/dp/" + p)
-		w.exchange("GET", "https://shop.test/static/app.js", nil, 200,
+		w.navigate(page)
+		w.exchange("GET", "https://shop.test/static/app.js", h(nil, script(page)...), 200,
 			[]recording.Header{{Name: "Content-Type", Value: "application/javascript"}},
 			"application/javascript", []byte("console.log(1)"))
-		w.exchange("GET", "https://shop.test/api/offer?item="+p, cookie, 200, js, "application/json",
+		w.exchange("GET", "https://shop.test/api/offer?item="+p, h(cookie, fetch(page)...), 200, js, "application/json",
 			[]byte(`{"item":`+fmt.Sprintf("%q", p)+`,"cents":1999,"more":true}`))
 	}
 	if err := store.Close(); err != nil {
@@ -214,15 +233,15 @@ func TestAcceptanceOnSyntheticRecordings(t *testing.T) {
 		t.Errorf("product -> product edge = %+v, want 2 ordered and 2 without", dpSelf)
 	}
 
-	// 8: browser events create episodes over trace ranges.
+	// 8: navigation requests create page views over trace ranges.
 	triggers := map[string]int{}
 	for _, ep := range res.Episodes {
 		if ep.Trigger != nil {
-			triggers[ep.Trigger.Type]++
+			triggers[ep.Trigger.Kind]++
 		}
 	}
-	if triggers["interaction.enter"] != 2 || triggers["interaction.click"] != 4 {
-		t.Errorf("episode triggers = %v", triggers)
+	if len(res.Episodes) != 6 || triggers[model.TriggerTyped] != 2 || triggers[model.TriggerUser] != 4 {
+		t.Errorf("page view triggers = %v over %d page views", triggers, len(res.Episodes))
 	}
 
 	// 9: the evidence pack shows all of it.
@@ -236,8 +255,11 @@ func TestAcceptanceOnSyntheticRecordings(t *testing.T) {
 	if neighbor(e.Predecessors, asset.ID) != nil || e.Omitted.StaticNeighbors == 0 {
 		t.Error("a static family is listed as a neighbor")
 	}
-	if len(e.Episodes.Triggers) == 0 || e.Episodes.Triggers[0].Key != "interaction.click" || e.Episodes.Triggers[0].Count != 4 {
+	if len(e.Episodes.Triggers) == 0 || e.Episodes.Triggers[0].Key != model.TriggerUser || e.Episodes.Triggers[0].Count != 4 {
 		t.Errorf("product entry episodes = %+v", e.Episodes)
+	}
+	if len(e.Episodes.Kinds) != 1 || e.Episodes.Kinds[0].Key != model.KindDocument {
+		t.Errorf("product entry request kinds = %+v", e.Episodes.Kinds)
 	}
 	if len(res.Evidence.Static) != 1 || res.Evidence.Static[0].Family != asset.ID || res.Evidence.Static[0].Observations != 6 {
 		t.Errorf("static list = %+v", res.Evidence.Static)
@@ -305,11 +327,58 @@ func TestOutputIsIdempotentAndIgnoresInputOrder(t *testing.T) {
 	}
 }
 
+func TestBrowserEventsAreIgnored(t *testing.T) {
+	recs := fixture(t)
+	with, err := Run(recs, DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs[0].Events) == 0 {
+		t.Fatal("the fixture recorded no browser events")
+	}
+	for _, r := range recs {
+		r.Events = nil
+	}
+	without, err := Run(recs, DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if marshal(t, with) != marshal(t, without) {
+		t.Error("browser events changed the result")
+	}
+}
+
+func TestHostFilterKeepsOwnHosts(t *testing.T) {
+	recs := fixture(t)
+	for _, r := range recs {
+		r.Exchanges[1].Request.Host = "cdn.example.net"
+		r.Exchanges[2].Request.Host = "API.Shop.test"
+	}
+	opts := DefaultOptions()
+	opts.Hosts = []string{" shop.test", "SHOP.TEST"}
+	res, err := Run(recs, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := Run(recs, DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Manifest.Counts.Observations; got != all.Manifest.Counts.Observations-2 {
+		t.Errorf("filtered result has %d observations, want %d", got, all.Manifest.Counts.Observations-2)
+	}
+	if in := res.Manifest.Inputs[0]; in.Skipped != 1 || len(res.Manifest.Hosts) != 1 || res.Manifest.Hosts[0] != "shop.test" {
+		t.Errorf("manifest = %+v hosts %v, want one skipped exchange per input and hosts [shop.test]", in, res.Manifest.Hosts)
+	}
+	if res.Manifest.ID == all.Manifest.ID {
+		t.Error("the host filter did not change the result id")
+	}
+}
+
 func TestRunnerCacheGivesTheSameResultAsAFreshRun(t *testing.T) {
 	recs := fixture(t)
 	partial := *recs[0]
 	partial.Exchanges = partial.Exchanges[:4]
-	partial.Events = partial.Events[:3]
 	r := NewRunner(DefaultOptions())
 	if _, err := r.Run([]*recording.Recording{&partial, recs[1]}); err != nil {
 		t.Fatal(err)
