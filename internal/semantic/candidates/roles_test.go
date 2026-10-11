@@ -68,8 +68,8 @@ func TestFamilyRolesOnAmazon(t *testing.T) {
 		}
 		firstChoice[route(in, q.Family)] = task.Choices[0].ID
 	}
-	if rules[RuleStaticAsset] != 151 {
-		t.Errorf("%d static families settled, want 151", rules[RuleStaticAsset])
+	if rules[RuleStaticAsset] != 27 {
+		t.Errorf("%d static families settled, want 27", rules[RuleStaticAsset])
 	}
 	if rules[RuleCORSPreflight] == 0 || rules[RuleNoContent] == 0 {
 		t.Errorf("rules applied: %v", rules)
@@ -78,7 +78,7 @@ func TestFamilyRolesOnAmazon(t *testing.T) {
 		"GET www.amazon.com/s":                               RoleCollectionRead,
 		"GET www.amazon.com/{slot_1}/dp/{slot_2}/ref=sr_1_1": RoleItemRead,
 		"POST unagi.amazon.com/1/events/{slot_1}":            RoleBackground,
-		"GET ib.adnxs.com/getuid":                            RoleBackground,
+		"POST unagi-na.amazon.com/1/events/{slot_1}":         RoleBackground,
 	} {
 		if got := firstChoice[r]; got != want {
 			t.Errorf("%s: first choice %q, want %q", r, got, want)

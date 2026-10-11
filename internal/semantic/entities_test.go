@@ -10,7 +10,7 @@ import (
 )
 
 // productTask is the naming task of the Amazon product id entity.
-const productTask = "entity:5d8dfab6c68e:v1"
+const productTask = "entity:11439649c0d0:v1"
 
 func entityByName(x *ir.InterfaceIR, name string) *ir.Entity {
 	for i := range x.Entities {
@@ -43,7 +43,7 @@ func TestEntitiesReachTheIR(t *testing.T) {
 	if h := hypothesis(x, product.Hypothesis); h.Kind != ir.KindEntity || h.Status != ir.StatusMechanicallySupported {
 		t.Errorf("product hypothesis = %+v", h)
 	}
-	if len(product.Identity) < 10 || !contains(product.Aliases, "product") {
+	if len(product.Identity) < 10 || !contains(product.Aliases, "landingAsin") {
 		t.Errorf("product identity %d locations, aliases %v", len(product.Identity), product.Aliases)
 	}
 	// Its identity was checked on held-out values.
@@ -112,7 +112,7 @@ func TestNotAnObjectRemovesEntity(t *testing.T) {
 	// Nothing points at the removed entity.
 	for _, e := range res.IR.Entities {
 		for _, r := range e.Relations {
-			if r.Target == "ent:5d8dfab6c68e" {
+			if r.Target == "ent:11439649c0d0" {
 				t.Errorf("%s still relates to the removed entity", e.Name)
 			}
 		}

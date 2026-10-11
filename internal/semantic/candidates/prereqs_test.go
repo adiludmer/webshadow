@@ -35,7 +35,7 @@ func TestPrerequisitesOnAmazon(t *testing.T) {
 		t.Fatalf("session cookie candidate = %+v", cookie)
 	}
 	// The response id the suggestions hand to the search request.
-	if token == nil || !contains(token.Keys, "request.query.crid") || token.Matches != 10 || token.Of != 10 || token.Kind.Choices[0].ID != PrereqSetup {
+	if token == nil || !contains(token.Keys, "request.query.crid") || token.Matches != 11 || token.Of != 11 || token.Kind.Choices[0].ID != PrereqSetup {
 		t.Fatalf("crid candidate = %+v", token)
 	}
 	// Absence is recorded: a partial flow names how many went without.

@@ -9,8 +9,8 @@ import (
 	"github.com/adiludmer/webshadow/internal/semantic/store"
 )
 
-// coverage scores the IR's operations against the browser episodes of
-// the clustering result. An episode is relevant when it holds a family
+// coverage scores the IR's operations against the page views (episodes)
+// of the clustering result. A page view is relevant when it holds a family
 // whose standing role is neither background nor presentation, and covered
 // when it holds a family an operation is built from.
 func coverage(in *input.Input, x *ir.InterfaceIR) store.Coverage {

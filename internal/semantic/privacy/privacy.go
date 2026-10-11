@@ -34,9 +34,11 @@ const MinSecretLen = 8
 const minSubstringLen = 16
 
 var (
-	tagPattern   = regexp.MustCompile(`^\{\{redacted:[^{}]+\}\}$`)
-	jwtPattern   = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`)
-	emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
+	tagPattern = regexp.MustCompile(`^\{\{redacted:[^{}]+\}\}$`)
+	jwtPattern = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`)
+	// An address typed into a search box also travels URL-encoded, once
+	// in a query and twice inside an encoded link.
+	emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+-]+(@|%40|%2540)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
 )
 
 // sensitiveNames are substrings that mark a header, query key or body field
@@ -66,11 +68,13 @@ type Redactor struct {
 	stats    Stats
 }
 
-// New builds a Redactor for one clustering result. links and sequences are
-// the decoded links.json and sequences.json documents, as generic JSON;
-// they are where secret values are found, by the locations they occurred
-// at.
-func New(scope string, links, sequences any) *Redactor {
+// New builds a Redactor for one clustering result. links, sequences and
+// families are the decoded links.json, sequences.json and families.json
+// documents, as generic JSON; they are where secret values are found, by
+// the locations they occurred at. Families add the examples of slots at
+// secret locations, which catches a value seen only once, such as a
+// one-time token in a query.
+func New(scope string, links, sequences, families any) *Redactor {
 	sum := sha256.Sum256([]byte("webshadow/privacy/v1\x00" + scope))
 	r := &Redactor{key: sum[:], secrets: map[string]string{}, stats: Stats{Secrets: map[string]int{}}}
 	labels := map[string]string{} // value -> smallest secret location
@@ -109,6 +113,19 @@ func New(scope string, links, sequences any) *Redactor {
 			}
 			for _, ex := range list(f["examples"]) {
 				note(str(obj(ex)["value"]), label)
+			}
+		}
+	}
+	for _, fam := range list(families) {
+		for _, slot := range list(obj(fam)["slots"]) {
+			sl := obj(slot)
+			part, path, _ := strings.Cut(str(sl["location"]), ".")
+			label, ok := secretLocation(map[string]any{"part": part, "path": path})
+			if !ok {
+				continue
+			}
+			for _, ex := range list(sl["examples"]) {
+				note(str(ex), label)
 			}
 		}
 	}

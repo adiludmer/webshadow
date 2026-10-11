@@ -197,11 +197,12 @@ func slotRef(family string, s model.Slot) string {
 
 // opInputs turns the member families' varying request slots into inputs.
 // A slot carrying a verified entity's id becomes that entity's input; the
-// rest are grouped by name. A slot seen once joins an input other families
-// show varies; otherwise constant slots, redacted ones and ones an earlier
-// response filled every time are not inputs, and the last are listed as
-// state. Typed text that the families carry under different names, never
-// together, is one input: the same search box behind two URL forms.
+// rest are grouped by name. A slot seen once or always with one value joins
+// an input other families show varies; otherwise constant slots, redacted
+// ones and ones an earlier response filled every time are not inputs, and
+// the last are listed as state unless they hold typed text. Typed text that
+// the families carry under different names, never together, is one input:
+// the same search box behind two URL forms.
 func opInputs(families map[string]*model.RequestFamily, members []string, slotEntity map[string]*OpEntity, fed map[string]bool) ([]ir.InputField, []string) {
 	type acc struct {
 		field    ir.InputField
@@ -237,7 +238,7 @@ func opInputs(families map[string]*model.RequestFamily, members []string, slotEn
 		a.words = a.words && s.Type == model.TypeString && wordy(s.Examples)
 		a.field.Slots = append(a.field.Slots, ir.FieldRef{Ref: slotRef(id, s), Type: s.Type})
 	}
-	var once [][2]any
+	var constant [][2]any
 	for _, id := range members {
 		for _, s := range families[id].Slots {
 			ref := slotRef(id, s)
@@ -245,16 +246,18 @@ func opInputs(families map[string]*model.RequestFamily, members []string, slotEn
 			name := nameOf(id, s)
 			switch {
 			case name == "" || redacted(s.Examples):
-			case fed[ref]:
+			case fed[ref] && !(s.Type == model.TypeString && wordy(s.Examples)):
+				// Typed text an earlier response echoed (suggestions
+				// repeat the words typed so far) is still the user's.
 				state = append(state, ref)
 			case s.Cardinality >= 2 || (path && slotEntity[ref] != nil):
 				add(id, s, name)
-			case s.Observations == 1:
-				once = append(once, [2]any{id, s})
+			default:
+				constant = append(constant, [2]any{id, s})
 			}
 		}
 	}
-	for _, o := range once {
+	for _, o := range constant {
 		id, s := o[0].(string), o[1].(model.Slot)
 		if name := nameOf(id, s); inputs[name] != nil {
 			add(id, s, name)

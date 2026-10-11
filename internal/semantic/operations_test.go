@@ -12,8 +12,8 @@ import (
 	"github.com/adiludmer/webshadow/internal/semantic/store"
 )
 
-// The three URL forms of the Amazon search page.
-var searchForms = []string{"fam:62873a6451a2", "fam:98258e0892fb", "fam:a063cd25be92"}
+// The four URL forms of the Amazon search page.
+var searchForms = []string{"fam:3d3a2e0bb2ad", "fam:62873a6451a2", "fam:98258e0892fb", "fam:c8a90b9ee17b"}
 
 func operationWith(x *ir.InterfaceIR, family string) *ir.Operation {
 	for i := range x.Operations {
@@ -41,7 +41,7 @@ func TestOperationsOnAmazon(t *testing.T) {
 	if h := hypothesis(x, search.Hypothesis); h.CandidateID != "collection_read" || h.Status != ir.StatusMechanicallySupported {
 		t.Errorf("search hypothesis = %+v", h)
 	}
-	// One query input behind three URL forms; the response id the
+	// One query input behind four URL forms; the response id the
 	// suggestions always supply is state, not input.
 	var query *ir.InputField
 	for i := range search.Inputs {
@@ -54,7 +54,7 @@ func TestOperationsOnAmazon(t *testing.T) {
 			}
 		}
 	}
-	if query == nil || len(query.Slots) != 3 || !query.Required {
+	if query == nil || len(query.Slots) != 4 || !query.Required {
 		t.Fatalf("search query input = %+v", query)
 	}
 	// Search results name products: the search-result-to-product link.
@@ -105,7 +105,7 @@ func TestOperationsOnAmazon(t *testing.T) {
 			apart++
 		}
 	}
-	if samePage != 3 || apart == 0 {
+	if samePage != 6 || apart == 0 {
 		t.Errorf("%d same-page merges into search, %d pairs kept apart", samePage, apart)
 	}
 
@@ -168,7 +168,7 @@ func TestPatchRecordsContradictions(t *testing.T) {
 	if p.Prior != "r0001" || p.Revision != "" && p.Revision != res.Revision {
 		t.Errorf("patch %s -> %s", p.Prior, p.Revision)
 	}
-	if !contains(p.Removed, "ent:5d8dfab6c68e") || len(p.Contradictions) == 0 {
+	if !contains(p.Removed, "ent:11439649c0d0") || len(p.Contradictions) == 0 {
 		t.Errorf("removed %v, contradictions %+v", p.Removed, p.Contradictions)
 	}
 	for _, c := range p.Contradictions {
@@ -199,7 +199,7 @@ func TestPatchRecordsContradictions(t *testing.T) {
 
 // requestIDTask names the key class of Amazon's per-page tracking ids
 // (pf_rd_r, request-id and the like), which every page embeds in its links.
-const requestIDTask = "entity:7c0ddaa17b49:v1"
+const requestIDTask = "entity:8897f1b62102:v1"
 
 // A model that keeps tracking ids as an entity must not fuse pages that
 // merely carry them: families merge only as one page in several URL forms.
@@ -213,10 +213,11 @@ func TestTrackingIDsDoNotMergeOperations(t *testing.T) {
 		t.Fatal("the scripted model did not keep the tracking ids as an entity")
 	}
 	pages := map[string]string{
-		"fam:98258e0892fb": "search", "fam:62873a6451a2": "search", "fam:a063cd25be92": "search",
-		"fam:dea048077b86": "product page", "fam:a6b201a26695": "product page",
-		"fam:3401dbf3cdfd": "product page", "fam:f50dc767c393": "product page",
-		"fam:5c82378a50f7": "product api", "fam:de2582667e09": "product api",
+		"fam:98258e0892fb": "search", "fam:62873a6451a2": "search",
+		"fam:3d3a2e0bb2ad": "search", "fam:c8a90b9ee17b": "search",
+		"fam:dea048077b86": "product page", "fam:62a0b4fa0fdc": "product page",
+		"fam:9b2be3c65d61": "product page", "fam:baeff9ec58bd": "product page",
+		"fam:79b658cbf447": "product api",
 	}
 	for _, op := range res.IR.Operations {
 		kinds := map[string]bool{}

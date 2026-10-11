@@ -38,7 +38,7 @@ func TestAnalyzeIsReproducible(t *testing.T) {
 		t.Fatalf("first run: %+v", res)
 	}
 	m := res.Manifest
-	if m.Evidence != "cl_a6df5fb6df42" || m.Counts.Families != 294 || m.Counts.StaticFamilies != 151 || len(m.EvidenceFiles) != 7 {
+	if m.Evidence != "cl_9c551b949b63" || m.Counts.Families != 83 || m.Counts.StaticFamilies != 27 || len(m.EvidenceFiles) != 7 {
 		t.Errorf("manifest = %+v", m)
 	}
 	if got, err := a.LoadRun(res.Run); err != nil || got.Revision != "r0001" {
@@ -71,14 +71,14 @@ func TestAnalyzeIsReproducible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if x.SchemaVersion != ir.SchemaVersion || len(x.Evidence) != 1 || x.Evidence[0] != "cl_a6df5fb6df42" {
+	if x.SchemaVersion != ir.SchemaVersion || len(x.Evidence) != 1 || x.Evidence[0] != "cl_9c551b949b63" {
 		t.Errorf("revision = %+v", x)
 	}
 }
 
 func TestAnalyzeRefusesInvalidPrior(t *testing.T) {
 	s := testStore(t)
-	bad := ir.New("cl_a6df5fb6df42")
+	bad := ir.New("cl_9c551b949b63")
 	bad.Hypotheses = []ir.HypothesisRef{{ID: "hyp:1", Kind: ir.KindFamilyRole, Status: ir.StatusProposed}}
 	bad.Operations = []ir.Operation{{
 		ID: "op:1", Name: "invented", SourceFamilies: []string{"fam:000000000000"},
@@ -140,7 +140,7 @@ func TestRoleLedgersAreReproducible(t *testing.T) {
 	if lines := bytes.Count(ledger(t, a, ra.Run, "decisions.jsonl"), []byte("\n")); lines != c.Settled+c.Tasks {
 		t.Errorf("decisions.jsonl has %d lines", lines)
 	}
-	if n := len(roleHypotheses(ra.IR)); n != 294 {
+	if n := len(roleHypotheses(ra.IR)); n != 83 {
 		t.Errorf("%d role hypotheses, want one per family", n)
 	}
 	for _, h := range roleHypotheses(ra.IR) {
@@ -183,7 +183,7 @@ func TestInvalidAnswersNeverReachTheIR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Manifest.Counts.Unresolved != 1 || len(roleHypotheses(res.IR)) != 293 {
+	if res.Manifest.Counts.Unresolved != 1 || len(roleHypotheses(res.IR)) != 82 {
 		t.Errorf("counts = %+v", res.Manifest.Counts)
 	}
 	if got := searchRoles(res.IR); len(got) != 0 {

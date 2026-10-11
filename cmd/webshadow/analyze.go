@@ -124,7 +124,7 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Prerequisites: %d proposed\n", m.Counts.Prerequisites)
 	printPrerequisites(stdout, res.IR)
 	fmt.Fprintf(stdout, "Operations: %d, hypotheses: %d\n", m.Counts.Operations, m.Counts.Hypotheses)
-	fmt.Fprintf(stdout, "Coverage: %d of %d episodes (%.3f)\n", m.Coverage.Covered, m.Coverage.Relevant, m.Coverage.Score)
+	fmt.Fprintf(stdout, "Coverage: %d of %d page views (%.3f)\n", m.Coverage.Covered, m.Coverage.Relevant, m.Coverage.Score)
 	if m.Counts.Reused > 0 {
 		fmt.Fprintf(stdout, "Reused %d decisions from %s\n", m.Counts.Reused, m.ReusedFrom)
 	}

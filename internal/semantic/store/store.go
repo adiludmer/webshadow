@@ -232,14 +232,14 @@ type RunManifest struct {
 }
 
 // Coverage scores operations against the browsing they came from: of the
-// episodes whose traffic includes a family with a standing role other than
+// page views (episodes) whose traffic includes a family with a standing role other than
 // background or presentation, how many include an operation's family.
 type Coverage struct {
 	Episodes int     `json:"episodes"`
 	Relevant int     `json:"relevant"`
 	Covered  int     `json:"covered"`
 	Score    float64 `json:"score"`
-	// Uncovered lists the relevant episodes no operation covers.
+	// Uncovered lists the relevant page views no operation covers.
 	Uncovered []string `json:"uncovered"`
 }
 

@@ -21,7 +21,7 @@ var (
 )
 
 // loadFixture loads the Amazon fixture once for every test that only reads
-// it; decoding its 53,042 sequence edges takes a few seconds.
+// it; decoding its 3,844 sequence edges takes a moment.
 func loadFixture(t *testing.T) *Input {
 	t.Helper()
 	loadOnce.Do(func() { loaded, loadErr = Load(fixture) })
@@ -34,7 +34,7 @@ func loadFixture(t *testing.T) *Input {
 func TestLoadAmazonFixture(t *testing.T) {
 	in := loadFixture(t)
 	c := in.Manifest.Counts
-	if c.Families != 294 || c.Static != 151 || c.Links != 1151 || c.Episodes != 110 || c.Edges != 53042 {
+	if c.Families != 83 || c.Static != 27 || c.Links != 972 || c.Episodes != 39 || c.Edges != 3844 {
 		t.Errorf("manifest counts = %+v", c)
 	}
 	if len(in.Families) != c.Families || len(in.Links) != c.Links || len(in.Episodes) != c.Episodes || len(in.Sequences) != c.Edges {
@@ -99,7 +99,7 @@ func TestRedactWriteRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(in.Families) != 294 || in.Files[0].Name != "families.json" {
+	if len(in.Families) != 83 || in.Files[0].Name != "families.json" {
 		t.Errorf("round trip lost data: %d families, files %+v", len(in.Families), in.Files)
 	}
 }
