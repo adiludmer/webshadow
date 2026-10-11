@@ -10,6 +10,23 @@ models:
     max_tokens: 2048
     temperature: 0
 
+  # Qwen3 at two sizes, for `make analyze-bench MODEL="qwen3-1.7b qwen3-4b"`.
+  # WEBSHADOW_MODELS is the directory holding the Q4_K_M GGUF files from
+  # huggingface.co/unsloth/Qwen3-1.7B-GGUF and Qwen3-4B-GGUF.
+  - id: qwen3-1.7b
+    adapter: llama
+    model_path: ${WEBSHADOW_MODELS}/Qwen3-1.7B-Q4_K_M.gguf
+    context_size: 8192
+    max_tokens: 512
+    temperature: 0
+
+  - id: qwen3-4b
+    adapter: llama
+    model_path: ${WEBSHADOW_MODELS}/Qwen3-4B-Q4_K_M.gguf
+    context_size: 8192
+    max_tokens: 512
+    temperature: 0
+
   # Replies with fixed text; for smoke-testing the pipeline without a model.
   - id: fake-noop
     adapter: fake

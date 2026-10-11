@@ -9,7 +9,7 @@ LLAMA_LIB   := $(LLAMA_BUILD)/src/libllama.a
 # Extra CMake flags for GPU backends, e.g. -DGGML_METAL=ON or -DGGML_CUDA=ON.
 LLAMA_CMAKE_FLAGS ?=
 
-.PHONY: build llama llama-lib test test-llama clean-llama release
+.PHONY: build llama llama-lib test test-llama clean-llama release analyze-bench
 
 build:
 	go build -o bin/webshadow ./cmd/webshadow
@@ -43,3 +43,18 @@ test-llama: llama-lib
 
 clean-llama:
 	rm -rf $(LLAMA_BUILD)
+
+# Scores semantic analysis of the Amazon fixture against its reviewed
+# expected IR. MODEL lists models.yaml ids to compare, e.g.
+# MODEL="qwen3-1.7b qwen3-4b" with WEBSHADOW_MODELS set; the default mock
+# needs no llama.cpp.
+MODEL ?= mock
+BENCH_CASE ?= internal/semantic/testdata/amazon-search
+
+analyze-bench:
+ifeq ($(MODEL),mock)
+	go run ./cmd/webshadow analyze bench -model mock $(BENCH_CASE)
+else
+	$(MAKE) llama
+	bin/webshadow analyze bench $(addprefix -model ,$(MODEL)) $(BENCH_CASE)
+endif

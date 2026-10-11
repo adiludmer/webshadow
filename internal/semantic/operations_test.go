@@ -196,3 +196,37 @@ func TestPatchRecordsContradictions(t *testing.T) {
 		t.Errorf("report written to %s: %v", path, err)
 	}
 }
+
+// requestIDTask names the key class of Amazon's per-page tracking ids
+// (pf_rd_r, request-id and the like), which every page embeds in its links.
+const requestIDTask = "entity:7c0ddaa17b49:v1"
+
+// A model that keeps tracking ids as an entity must not fuse pages that
+// merely carry them: families merge only as one page in several URL forms.
+func TestTrackingIDsDoNotMergeOperations(t *testing.T) {
+	m := &decide.Mock{Script: map[string][]string{requestIDTask: {`{"choice_id":"request_id","evidence_refs":["E1"]}`}}}
+	res, err := Analyze(context.Background(), fixture, Options{Store: testStore(t), Decider: decide.New(m, decide.ModelInfo{}, decide.DefaultParams())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entityByName(res.IR, "request_id"); e == nil {
+		t.Fatal("the scripted model did not keep the tracking ids as an entity")
+	}
+	pages := map[string]string{
+		"fam:98258e0892fb": "search", "fam:62873a6451a2": "search", "fam:a063cd25be92": "search",
+		"fam:dea048077b86": "product page", "fam:a6b201a26695": "product page",
+		"fam:3401dbf3cdfd": "product page", "fam:f50dc767c393": "product page",
+		"fam:5c82378a50f7": "product api", "fam:de2582667e09": "product api",
+	}
+	for _, op := range res.IR.Operations {
+		kinds := map[string]bool{}
+		for _, f := range op.SourceFamilies {
+			if k := pages[f]; k != "" {
+				kinds[k] = true
+			}
+		}
+		if len(kinds) > 1 {
+			t.Errorf("operation %s merges %v: %v", op.Name, kinds, op.SourceFamilies)
+		}
+	}
+}

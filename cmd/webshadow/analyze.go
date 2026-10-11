@@ -22,6 +22,7 @@ import (
 
 const analyzeUsage = `usage: webshadow analyze [-store dir] [-model mock|<id>] [-models models.yaml] [-reuse=true] <cluster id or dir>
        webshadow analyze report [-store dir] [-json] [run id|latest]
+       webshadow analyze bench [-model id]... [-expected file] <cluster id or dir>
        webshadow analyze redact [-gz] <cluster id or dir> <out dir>
 
 analyze reads the output of webshadow cluster and commits a new revision of
@@ -43,6 +44,9 @@ recorded browsing, hypotheses by status, undecided tasks, rejected claims,
 changes to the IR and model cost. Every run also writes it as JSON to
 reports/<run id>.json.
 
+bench scores runs against a reviewed expected IR and compares models; see
+webshadow analyze bench -h.
+
 redact writes a copy of a cluster output with those values already
 replaced, for sharing it or keeping it as a test fixture.
 `
@@ -59,6 +63,9 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "report" {
 		return runAnalyzeReport(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "bench" {
+		return runAnalyzeBench(args[1:], stdout, stderr)
 	}
 	fs := flag.NewFlagSet("analyze", flag.ContinueOnError)
 	fs.SetOutput(stderr)

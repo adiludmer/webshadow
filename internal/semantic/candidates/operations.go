@@ -11,17 +11,18 @@ import (
 	"github.com/adiludmer/webshadow/internal/semantic/ir"
 )
 
-// Merge rules: why two families became one operation.
-const (
-	// MergeSharedIdentity joins families with the same role whose requests
-	// carry one verified identifier, such as a product page and a product
-	// API that both take the product id.
-	MergeSharedIdentity = "shared_identity"
-	// MergeSamePage joins families with the same role on one host whose
-	// paths start with the same literal and whose responses have the same
-	// shapes, such as three URL forms of one search page.
-	MergeSamePage = "same_page"
-)
+// MergeSamePage is the one merge rule: families with the same role on
+// one host whose paths start with the same literal and whose responses have
+// the same shapes, such as three URL forms of one search page.
+//
+// Families are never merged because they carry the same identifier. A key
+// in two requests does not make them one capability (a product page, its
+// reviews and add-to-cart all take the product id), whether two families
+// return the same object cannot be checked for HTML pages, and a model
+// that keeps a tracking id as an entity would let it join unrelated pages.
+// Operations that take the same entity stay separate and share its input
+// type; a later stage that sees what each returns may merge them.
+const MergeSamePage = "same_page"
 
 // OpEntity is what operation synthesis needs to know about an entity the
 // IR kept.
@@ -93,13 +94,6 @@ func Operations(in *input.Input, roles map[string]string, entities []OpEntity, f
 				continue
 			}
 			fa, fb := families[a], families[b]
-			if e, why := sharedIdentity(fa, fb, slotEntity, entities); e != nil {
-				uf.union(a, b)
-				merges = append(merges, MergeRecord{A: a, B: b, Rule: MergeSharedIdentity, Detail: why})
-				continue
-			} else if why != "" {
-				rejected = append(rejected, MergeRecord{A: a, B: b, Detail: why})
-			}
 			if fa.Host != fb.Host {
 				continue
 			}
@@ -160,47 +154,6 @@ func Operations(in *input.Input, roles map[string]string, entities []OpEntity, f
 	return out
 }
 
-// sharedIdentity returns the verified entity whose identifier both
-// families' requests carry and both families' responses return: two
-// sources of the same object's fields. When they share the identifier but
-// one does not return the object, it says why they stay apart.
-func sharedIdentity(a, b *model.RequestFamily, slotEntity map[string]*OpEntity, entities []OpEntity) (*OpEntity, string) {
-	carried := func(f *model.RequestFamily) map[string]*OpEntity {
-		out := map[string]*OpEntity{}
-		for _, s := range f.Slots {
-			if e := slotEntity[slotRef(f.ID, s)]; e != nil && e.Verified {
-				out[e.ID] = e
-			}
-		}
-		return out
-	}
-	returns := func(f *model.RequestFamily, e *OpEntity) bool {
-		for _, p := range append(append([]string{}, e.Producers...), e.Containers...) {
-			if familyOf(p) == f.ID {
-				return true
-			}
-		}
-		return false
-	}
-	ca, cb := carried(a), carried(b)
-	var ids []string
-	for id := range cb {
-		if ca[id] != nil {
-			ids = append(ids, id)
-		}
-	}
-	sort.Strings(ids)
-	why := ""
-	for _, id := range ids {
-		e := ca[id]
-		if returns(a, e) && returns(b, e) {
-			return e, "both take the verified " + e.Name + " identifier and return " + e.Name + " data"
-		}
-		why = "both take the verified " + e.Name + " identifier, but not both return " + e.Name + " data"
-	}
-	return nil, why
-}
-
 // samePage reports whether two families on one host are the same page in
 // different URL forms: the same first path literal and the same response
 // shapes. The reason is returned either way.
@@ -216,11 +169,15 @@ func samePage(a, b *model.RequestFamily) (string, bool) {
 	return fmt.Sprintf("paths start with %q and responses have the same shapes", la), true
 }
 
+// firstLiteral is a family's first fixed path segment. Leading slots are
+// skipped: in /{slug}/dp/{asin} the page is "dp", not the product's slug.
 func firstLiteral(f *model.RequestFamily) string {
-	if len(f.Route) == 0 {
-		return ""
+	for _, seg := range f.Route {
+		if seg.Literal != "" {
+			return seg.Literal
+		}
 	}
-	return f.Route[0].Literal
+	return ""
 }
 
 func variantSet(f *model.RequestFamily) string {
