@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/adiludmer/webshadow/internal/cdp"
 	"github.com/adiludmer/webshadow/internal/chromium"
 	"github.com/adiludmer/webshadow/internal/mitm"
 	"github.com/adiludmer/webshadow/internal/recording"
@@ -52,7 +51,7 @@ func runBrowser(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("browser", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: webshadow browser [flags] [url]\n\nLaunches an isolated Chromium through the recording proxy and records\nthe session until you press Ctrl-C or close the browser.\n\nFlags:")
+		fmt.Fprintln(stderr, "usage: webshadow browser [flags] [url]\n\nLaunches an isolated Chromium on url through the recording proxy and\nrecords every request and response until you press Ctrl-C or close the\nbrowser. Nothing is read from the browser itself, so the recording holds\nwhat a server-side recorder would see.\n\nFlags:")
 		fs.PrintDefaults()
 	}
 	var cfg browserConfig
@@ -149,39 +148,25 @@ func recordSession(ctx context.Context, cfg browserConfig, stdout, stderr io.Wri
 		ProxyAddr:  addr,
 		SPKIHash:   ca.LeafSPKIHash(),
 		Headless:   cfg.headless,
+		StartURL:   cfg.startURL,
 		Log:        log,
 	})
 	if err != nil {
 		log.Close()
 		return abort(err)
 	}
-	rec, err := cdp.Start(ctx, b.DevToolsURL, store, logf)
-	if err == nil && cfg.startURL != "" {
-		// Opened only once the recorder is attached, so its first
-		// navigation is recorded.
-		err = rec.Open(ctx, cfg.startURL)
-	}
-	if err != nil {
-		b.Close()
-		if rec != nil {
-			rec.Close()
-		}
-		log.Close()
-		return abort(fmt.Errorf("connecting to Chromium DevTools: %w", err))
-	}
-	return runRecording(ctx, cfg, rt, b, rec, proxy, store, addr, profile, stdout)
+	return runRecording(ctx, cfg, rt, b, proxy, store, addr, profile, stdout)
 }
 
 // runRecording runs a launched session to its end and stops everything it owns.
-func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, b *chromium.Browser, rec *cdp.Recorder, proxy *mitm.Proxy, store *recording.Store, addr, profile string, stdout io.Writer) error {
+func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, b *chromium.Browser, proxy *mitm.Proxy, store *recording.Store, addr, profile string, stdout io.Writer) error {
 	uerr := store.UpdateSession(func(s *recording.Session) {
 		s.Proxy = &recording.ProxyInfo{Addr: addr, CAFingerprint: proxy.CA.Fingerprint()}
 		s.Browser = &recording.BrowserInfo{Version: b.Version, Executable: rt.Executable, Args: b.Args, Profile: profile}
 	})
 	fmt.Fprintf(stdout, "Webshadow recorder started\n")
 	fmt.Fprintf(stdout, "Proxy: %s\n", addr)
-	fmt.Fprintf(stdout, "Browser: Chromium %s (%s)\n", productVersion(b.Version), rt.Source)
-	fmt.Fprintf(stdout, "CDP: connected\n")
+	fmt.Fprintf(stdout, "Browser: %s (%s)\n", browserName(b.Version), rt.Source)
 	fmt.Fprintf(stdout, "Session: %s\n", store.ID())
 	fmt.Fprintf(stdout, "Recording: %s\n", store.Dir())
 	fmt.Fprintf(stdout, "Press Ctrl-C or close the browser to stop.\n")
@@ -210,24 +195,23 @@ func runRecording(ctx context.Context, cfg browserConfig, rt *chromium.Runtime, 
 	close(stopFlush)
 	<-flushDone
 	berr := b.Close()
-	// The browser is gone, so this only waits for queued events.
-	rerr := rec.Close()
 	perr := proxy.Close()
 	serr := store.Close()
 	s := store.Session()
-	fmt.Fprintf(stdout, "Recording complete: %d HTTP exchanges, %d browser events in %s\n", s.Exchanges, s.BrowserEvents, store.Dir())
+	fmt.Fprintf(stdout, "Recording complete: %d HTTP exchanges in %s\n", s.Exchanges, store.Dir())
 	if cfg.keepProfile {
 		fmt.Fprintf(stdout, "Browser profile kept: %s\n", profile)
 	}
-	return errors.Join(uerr, berr, rerr, ignoreClosed(perr), serr)
+	return errors.Join(uerr, berr, ignoreClosed(perr), serr)
 }
 
-// productVersion turns "Chrome/157.0.8089.0" into "157.0.8089.0".
-func productVersion(product string) string {
-	if _, v, ok := strings.Cut(product, "/"); ok {
-		return v
+// browserName is the version line Chromium printed, or a plain name when
+// it printed none.
+func browserName(version string) string {
+	if version == "" {
+		return "Chromium"
 	}
-	return product
+	return version
 }
 
 func ignoreClosed(err error) error {

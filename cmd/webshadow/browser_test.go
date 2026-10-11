@@ -56,7 +56,7 @@ func recordOnce(t *testing.T, home, exe string, origin *httptest.Server, loaded 
 	if err := <-done; err != nil {
 		t.Fatalf("session: %v\n%s", err, errOut.String())
 	}
-	for _, want := range []string{"Webshadow recorder started", "Proxy: 127.0.0.1:", "Browser: Chromium ", "CDP: connected", "Session: rec_", "Recording complete: "} {
+	for _, want := range []string{"Webshadow recorder started", "Proxy: 127.0.0.1:", "Browser: ", "Session: rec_", "Recording complete: "} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q:\n%s", want, out.String())
 		}
@@ -113,6 +113,9 @@ func TestBrowserSessionsStayIsolated(t *testing.T) {
 		if r.Session.Status != recording.StatusComplete || r.Session.Browser == nil || r.Session.Proxy == nil {
 			t.Errorf("%s session = %+v", id, r.Session)
 		}
+		if _, err := os.Stat(filepath.Join(root, id, "browser.jsonl")); err == nil {
+			t.Errorf("%s wrote browser events", id)
+		}
 		var page *recording.HTTPExchange
 		for i := range r.Exchanges {
 			if ex := &r.Exchanges[i]; ex.SessionID != id {
@@ -148,7 +151,7 @@ func TestBrowserSessionsStayIsolated(t *testing.T) {
 		t.Errorf("recordings show = %d\n%s", code, out)
 	}
 	code, out, _ = runCLI("recordings", "timeline", a)
-	if code != 0 || !strings.Contains(out, "http.request") || !strings.Contains(out, "http.response") {
+	if code != 0 || !strings.Contains(out, "page.navigation.typed") || !strings.Contains(out, "http.request") || !strings.Contains(out, "http.response") {
 		t.Errorf("recordings timeline = %d\n%s", code, out)
 	}
 	if code, _, _ = runCLI("recordings", "delete", a); code != 0 {

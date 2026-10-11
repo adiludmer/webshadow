@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/adiludmer/webshadow/internal/cluster/episode"
+	"github.com/adiludmer/webshadow/internal/cluster/model"
+	"github.com/adiludmer/webshadow/internal/cluster/normalize"
+	"github.com/adiludmer/webshadow/internal/cluster/trace"
 	"github.com/adiludmer/webshadow/internal/recording"
 )
 
@@ -14,9 +18,8 @@ const recordingsUsage = `usage: webshadow recordings <command> [arguments]
 Commands:
   list               list recorded sessions
   show <id>          summarize a session
-  timeline [-all] <id>
-                     print HTTP and browser events in time order; -all adds
-                     CDP network and bookkeeping events
+  timeline <id>      print requests and responses in time order, with a
+                     page line where each page view starts
   delete <id>        delete a session and everything it recorded
 `
 
@@ -32,10 +35,6 @@ func runRecordings(args []string, stdout, stderr io.Writer) int {
 	}
 	root := filepath.Join(home, "recordings")
 	cmd, rest := args[0], args[1:]
-	all := false
-	if cmd == "timeline" && len(rest) > 0 && (rest[0] == "-all" || rest[0] == "--all") {
-		all, rest = true, rest[1:]
-	}
 	switch cmd {
 	case "-h", "-help", "--help", "help":
 		fmt.Fprint(stdout, recordingsUsage)
@@ -76,7 +75,11 @@ func runRecordings(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if cmd == "timeline" {
-		if err := recording.WriteTimeline(stdout, recording.Timeline(r, all)); err != nil {
+		pages, err := pageViewEntries(r)
+		if err == nil {
+			err = recording.WriteTimeline(stdout, recording.Timeline(r, pages...))
+		}
+		if err != nil {
 			fmt.Fprintf(stderr, "webshadow recordings: %v\n", err)
 			return 1
 		}
@@ -97,8 +100,8 @@ func recordingsList(root string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	for _, s := range sessions {
-		fmt.Fprintf(stdout, "%s  %-9s  %s  %5d exchanges  %5d events\n",
-			s.ID, s.Status, s.StartedAt.Local().Format("2006-01-02 15:04"), s.Exchanges, s.BrowserEvents)
+		fmt.Fprintf(stdout, "%s  %-9s  %s  %5d exchanges\n",
+			s.ID, s.Status, s.StartedAt.Local().Format("2006-01-02 15:04"), s.Exchanges)
 	}
 	return 0
 }
@@ -119,7 +122,10 @@ func recordingsShow(r *recording.Recording, stdout io.Writer) {
 	if s.Proxy != nil {
 		fmt.Fprintf(stdout, "Proxy: %s\n", s.Proxy.Addr)
 	}
-	fmt.Fprintf(stdout, "HTTP exchanges: %d\nBrowser events: %d\n", len(r.Exchanges), len(r.Events))
+	fmt.Fprintf(stdout, "HTTP exchanges: %d\n", len(r.Exchanges))
+	if views, err := pageViews(r); err == nil {
+		fmt.Fprintf(stdout, "Page views: %d\n", len(views))
+	}
 	if r.Truncated {
 		fmt.Fprintln(stdout, "Warning: the recording ends in a partial record, which was skipped")
 	}
@@ -155,4 +161,45 @@ func recordingsShow(r *recording.Recording, stdout io.Writer) {
 		}
 		fmt.Fprintf(stdout, "  %5d  %s\n", hosts[h], h)
 	}
+}
+
+// pageViews partitions a recording into page views the way clustering
+// does, from request headers alone.
+func pageViews(r *recording.Recording) ([]model.Episode, error) {
+	obs := make([]model.Observation, 0, len(r.Exchanges))
+	opts := normalize.DefaultOptions()
+	for i := range r.Exchanges {
+		ex := &r.Exchanges[i]
+		if ex.SessionID == "" {
+			ex.SessionID = r.Session.ID
+		}
+		o, err := normalize.Exchange(r, ex, opts)
+		if err != nil {
+			return nil, err
+		}
+		obs = append(obs, o)
+	}
+	_, eps := trace.Build(trace.Session{ID: r.Session.ID, Observations: obs}, nil, episode.DefaultOptions())
+	var views []model.Episode
+	for _, ep := range eps {
+		if ep.Trigger != nil {
+			views = append(views, ep)
+		}
+	}
+	return views, nil
+}
+
+// pageViewEntries are timeline lines for where each page view starts,
+// named page.<trigger>.
+func pageViewEntries(r *recording.Recording) ([]recording.Entry, error) {
+	views, err := pageViews(r)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]recording.Entry, 0, len(views))
+	for _, v := range views {
+		t := v.Trigger
+		out = append(out, recording.Entry{T: t.T, Seq: t.Seq, Kind: "page." + t.Kind, Text: t.URL})
+	}
+	return out, nil
 }

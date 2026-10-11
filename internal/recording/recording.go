@@ -4,19 +4,15 @@
 //	<root>/<session id>/
 //	  session.json   session metadata, rewritten when the session stops
 //	  http.jsonl     one HTTPExchange per line, in completion order
-//	  browser.jsonl  one BrowserEvent per line, in arrival order
 //	  bodies/        request and response bodies, named <sha256>.bin
 //
-// The format records facts only: bytes as they crossed the proxy and
-// browser events as Chromium reported them. Both streams are stamped by one
-// session Clock, so a later analyzer can merge them without running the
-// browser or the proxy.
+// The format records facts only: requests and responses as they crossed
+// the proxy, which is what a server-side recorder would see too. Nothing
+// comes from the browser itself. Recordings made before browser events were
+// dropped also hold a browser.jsonl, which is ignored.
 package recording
 
-import (
-	"encoding/json"
-	"time"
-)
+import "time"
 
 // FormatVersion changes whenever a field changes meaning.
 const FormatVersion = 1
@@ -31,7 +27,6 @@ const (
 const (
 	SessionFile = "session.json"
 	HTTPFile    = "http.jsonl"
-	BrowserFile = "browser.jsonl"
 	BodiesDir   = "bodies"
 )
 
@@ -46,8 +41,7 @@ type Session struct {
 	Proxy   *ProxyInfo   `json:"proxy,omitempty"`
 	Browser *BrowserInfo `json:"browser,omitempty"`
 
-	Exchanges     int `json:"exchanges"`
-	BrowserEvents int `json:"browser_events"`
+	Exchanges int `json:"exchanges"`
 }
 
 // ProxyInfo describes the proxy that recorded the session.
@@ -133,21 +127,4 @@ type HTTPExchange struct {
 	Response *Response `json:"response,omitempty"`
 	Timing   Timing    `json:"timing"`
 	Error    string    `json:"error,omitempty"`
-}
-
-// BrowserEvent is one event from the browser: a CDP event or an
-// interaction reported by the injected instrumentation.
-type BrowserEvent struct {
-	ID        string `json:"id"`
-	Seq       uint64 `json:"seq"`
-	SessionID string `json:"session_id"`
-	Timestamp Stamp  `json:"timestamp"`
-
-	TargetID string `json:"target_id,omitempty"`
-	FrameID  string `json:"frame_id,omitempty"`
-	// Type names the event, such as "Page.frameNavigated" for a CDP event
-	// or "interaction.click" for an instrumented one.
-	Type    string          `json:"type"`
-	PageURL string          `json:"page_url,omitempty"`
-	Payload json.RawMessage `json:"payload,omitempty"`
 }

@@ -9,6 +9,13 @@ from the homepage, opens the first result, goes back and searches for
 step (needs ImageMagick's `import`).
 
     DISPLAY=:99 python3 scripts/amazon-session.py [screenshot dir]
+
+AMAZON_TERMS, a comma-separated list, replaces the two searches with a
+longer session: each term is searched, and the first result of every
+other one is opened and left with Back. The test fixture was recorded this
+way. AMAZON_PACE multiplies every wait; a fast session of many searches
+runs into Amazon's "I am human" checkpoint, which this script does not
+answer.
 """
 import os
 import subprocess
@@ -23,7 +30,14 @@ from Xlib.ext import xtest
 SEARCH_BOX = (495, 178)
 FIRST_RESULT = (760, 700)
 
+PACE = float(os.environ.get("AMAZON_PACE", "1"))
+
 d = display.Display()
+
+
+def wait(seconds):
+    time.sleep(seconds * PACE)
+
 shots = sys.argv[1] if len(sys.argv) > 1 else ""
 
 
@@ -69,17 +83,28 @@ def search(term):
     key("Control_L+a")
     type_text(term)
     key("Return")
-    time.sleep(9)
+    wait(9)
 
 
-time.sleep(12)
+def open_first_result(name):
+    click(*FIRST_RESULT)
+    wait(9)
+    shot(name)
+    key("Alt_L+Left")
+    wait(5)
+
+
+wait(12)
 shot("1-home")
-search("laptop")
-shot("2-search-laptop")
-click(*FIRST_RESULT)
-time.sleep(9)
-shot("3-product")
-key("Alt_L+Left")
-time.sleep(5)
-search("usb c cable")
-shot("4-search-usb-c-cable")
+terms = [t.strip() for t in os.environ.get("AMAZON_TERMS", "").split(",") if t.strip()]
+if not terms:
+    search("laptop")
+    shot("2-search-laptop")
+    open_first_result("3-product")
+    search("usb c cable")
+    shot("4-search-usb-c-cable")
+for i, term in enumerate(terms):
+    search(term)
+    shot("search-%02d" % (i + 1))
+    if i % 2 == 0:
+        open_first_result("product-%02d" % (i + 1))

@@ -26,17 +26,20 @@ func TestCreateAllocatesSeparateSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	ba, _ := a.WriteBody([]byte("only in a"))
-	if err := b.AppendBrowserEvent(&BrowserEvent{Type: "Page.loadEventFired"}); err != nil {
+	if err := b.AppendExchange(&HTTPExchange{Request: Request{Method: "GET", URL: "https://b.test/"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AppendExchange(&HTTPExchange{Request: Request{Method: "GET", URL: "https://b.test/2"}}); err != nil {
 		t.Fatal(err)
 	}
 	closeStore(t, a)
 	closeStore(t, b)
 
 	ra, rb := mustLoad(t, a.Dir()), mustLoad(t, b.Dir())
-	if len(ra.Exchanges) != 1 || len(ra.Events) != 0 || len(rb.Exchanges) != 0 || len(rb.Events) != 1 {
-		t.Errorf("streams mixed: a has %d/%d, b has %d/%d", len(ra.Exchanges), len(ra.Events), len(rb.Exchanges), len(rb.Events))
+	if len(ra.Exchanges) != 1 || len(rb.Exchanges) != 2 {
+		t.Errorf("streams mixed: a has %d, b has %d", len(ra.Exchanges), len(rb.Exchanges))
 	}
-	if ra.Exchanges[0].SessionID != a.ID() || rb.Events[0].SessionID != b.ID() {
+	if ra.Exchanges[0].SessionID != a.ID() || rb.Exchanges[0].SessionID != b.ID() {
 		t.Error("records carry the wrong session id")
 	}
 	if _, err := os.Stat(filepath.Join(b.Dir(), filepath.FromSlash(ba.Ref))); err == nil {
@@ -136,15 +139,31 @@ func TestPermissions(t *testing.T) {
 
 func TestLoadDropsPartialLastLine(t *testing.T) {
 	s := mustCreate(t, t.TempDir())
-	s.AppendBrowserEvent(&BrowserEvent{Type: "Page.frameNavigated", PageURL: "https://a.test/"})
+	s.AppendExchange(&HTTPExchange{Request: Request{Method: "GET", URL: "https://a.test/"}})
 	closeStore(t, s)
-	f, _ := os.OpenFile(filepath.Join(s.Dir(), BrowserFile), os.O_APPEND|os.O_WRONLY, 0)
-	f.WriteString(`{"id":"ev_000002","ty`)
+	f, _ := os.OpenFile(filepath.Join(s.Dir(), HTTPFile), os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString(`{"id":"ex_000002","re`)
 	f.Close()
 
 	r := mustLoad(t, s.Dir())
-	if !r.Truncated || len(r.Events) != 1 {
-		t.Errorf("truncated=%v events=%d, want true and 1", r.Truncated, len(r.Events))
+	if !r.Truncated || len(r.Exchanges) != 1 {
+		t.Errorf("truncated=%v exchanges=%d, want true and 1", r.Truncated, len(r.Exchanges))
+	}
+}
+
+// Recordings from the CDP recorder also hold browser.jsonl. It is not read
+// and does not stop the recording from loading.
+func TestLoadIgnoresBrowserEvents(t *testing.T) {
+	s := mustCreate(t, t.TempDir())
+	s.AppendExchange(&HTTPExchange{Request: Request{Method: "GET", URL: "https://a.test/"}})
+	closeStore(t, s)
+	if _, err := os.Stat(filepath.Join(s.Dir(), "browser.jsonl")); err == nil {
+		t.Error("a new recording wrote browser.jsonl")
+	}
+	os.WriteFile(filepath.Join(s.Dir(), "browser.jsonl"), []byte(`{"id":"ev_000001","type":"interaction.click"}`+"\n{\"id\""), 0o600)
+	r := mustLoad(t, s.Dir())
+	if r.Truncated || len(r.Exchanges) != 1 {
+		t.Errorf("truncated=%v exchanges=%d, want false and 1", r.Truncated, len(r.Exchanges))
 	}
 }
 
@@ -154,27 +173,27 @@ func TestTimelineIsDeterministic(t *testing.T) {
 			{ID: "ex_000001", Seq: 3, Request: Request{Method: "GET", URL: "https://shop.test/s?k=laptop"}, Response: &Response{Status: 200}, Timing: Timing{RequestStart: 14_291_000_000, ResponseStart: 14_612_000_000}},
 			{ID: "ex_000002", Seq: 4, Request: Request{Method: "GET", URL: "https://shop.test/x"}, Error: "upstream tls: unknown authority", StartedAt: Stamp{T: 14_027_000_000}, CompletedAt: Stamp{T: 14_027_000_000}},
 		},
-		Events: []BrowserEvent{
-			{ID: "ev_000001", Seq: 1, Type: "Page.frameNavigated", PageURL: "https://shop.test/", Timestamp: Stamp{T: 12_410_000_000}},
-			{ID: "ev_000002", Seq: 2, Type: "interaction.click", Timestamp: Stamp{T: 14_027_000_000}},
-			{ID: "ev_000003", Seq: 5, Type: "Page.frameNavigated", PageURL: "https://shop.test/s?k=laptop", Timestamp: Stamp{T: 14_890_000_000}},
-		},
+	}
+	// A caller's entry for the exchange that starts a page view comes before
+	// its request.
+	pages := []Entry{
+		{T: 14_291_000_000, Seq: 3, Kind: "page.navigation.user", Text: "https://shop.test/s?k=laptop"},
+		{T: 12_000_000_000, Seq: 1, Kind: "page.navigation.typed", Text: "https://shop.test/"},
 	}
 	want := []string{
-		"browser.navigation",
-		"browser.click",
+		"page.navigation.typed",
 		"http.request",
 		"http.error",
+		"page.navigation.user",
 		"http.request",
 		"http.response",
-		"browser.navigation",
 	}
 	rng := rand.New(rand.NewSource(1))
 	for round := 0; round < 20; round++ {
 		rng.Shuffle(len(r.Exchanges), func(i, j int) { r.Exchanges[i], r.Exchanges[j] = r.Exchanges[j], r.Exchanges[i] })
-		rng.Shuffle(len(r.Events), func(i, j int) { r.Events[i], r.Events[j] = r.Events[j], r.Events[i] })
+		rng.Shuffle(len(pages), func(i, j int) { pages[i], pages[j] = pages[j], pages[i] })
 		var got []string
-		for _, e := range Timeline(r, true) {
+		for _, e := range Timeline(r, pages...) {
 			got = append(got, e.Kind)
 		}
 		if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -182,7 +201,7 @@ func TestTimelineIsDeterministic(t *testing.T) {
 		}
 	}
 	var buf bytes.Buffer
-	WriteTimeline(&buf, Timeline(r, true))
+	WriteTimeline(&buf, Timeline(r, pages...))
 	if !strings.Contains(buf.String(), "   14.612 http.response            200 exchange=ex_000001") {
 		t.Errorf("timeline text:\n%s", buf.String())
 	}

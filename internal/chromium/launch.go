@@ -1,18 +1,13 @@
 package chromium
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,10 +41,6 @@ func (o *LaunchOptions) Args() []string {
 		// local sites needs it too.
 		"--proxy-bypass-list=<-loopback>",
 		"--ignore-certificate-errors-spki-list=" + o.SPKIHash,
-		// DevTools listens on a free loopback port, written to
-		// DevToolsActivePort in the profile.
-		"--remote-debugging-port=0",
-		"--remote-debugging-address=127.0.0.1",
 		// QUIC would bypass the HTTP proxy.
 		"--disable-quic",
 		// Keep the recording to what the user does.
@@ -80,13 +71,13 @@ func (o *LaunchOptions) Args() []string {
 	return append(args, start)
 }
 
-// Browser is a launched Chromium owned by one recording session.
+// Browser is a launched Chromium owned by one recording session. Nothing
+// talks to it once it runs: the recording is what crosses the proxy.
 type Browser struct {
 	Args []string
-	// DevToolsURL is the browser-level CDP WebSocket endpoint.
-	DevToolsURL string
-	// Version is the product string Chromium reports, such as
-	// "Chrome/157.0.8089.0".
+	// Version is what the executable reports for --version, such as
+	// "Chromium 157.0.8089.0"; empty where it cannot say without starting
+	// a browser (Windows).
 	Version string
 
 	cmd  *exec.Cmd
@@ -94,16 +85,23 @@ type Browser struct {
 	err  error
 }
 
-// Launch starts Chromium and waits until its DevTools endpoint answers.
+// startupGrace is how long a launched browser must keep running to count
+// as started.
+var startupGrace = 2 * time.Second
+
+// Launch starts Chromium on the start URL and returns once it has kept
+// running for a moment, or with its output if it exited at once.
 func Launch(ctx context.Context, o LaunchOptions) (*Browser, error) {
 	if o.Executable == "" || o.ProfileDir == "" || o.ProxyAddr == "" || o.SPKIHash == "" {
 		return nil, errors.New("chromium: executable, profile, proxy and SPKI hash are required")
 	}
-	// A stale port file from a previous run would point at a dead browser.
-	os.Remove(filepath.Join(o.ProfileDir, "DevToolsActivePort"))
-
-	b := &Browser{Args: o.Args(), done: make(chan struct{})}
+	ver, err := version(ctx, o.Executable)
+	if err != nil {
+		return nil, err
+	}
+	b := &Browser{Args: o.Args(), Version: ver, done: make(chan struct{})}
 	b.cmd = exec.Command(o.Executable, b.Args...)
+	b.cmd.Env = env(os.Environ())
 	// The tail of the browser's output explains a failed start.
 	tail := &tailWriter{max: 2048}
 	var out io.Writer = tail
@@ -120,18 +118,16 @@ func Launch(ctx context.Context, o LaunchOptions) (*Browser, error) {
 		close(b.done)
 	}()
 
-	port, path, err := waitDevTools(ctx, o.ProfileDir, b.done)
-	if err != nil {
-		b.Close()
+	select {
+	case <-b.done:
+		err = errors.New("chromium exited right after starting")
 		if t := strings.TrimSpace(tail.String()); t != "" {
 			err = fmt.Errorf("%w; chromium output ends:\n%s", err, t)
 		}
 		return nil, err
-	}
-	b.DevToolsURL = fmt.Sprintf("ws://127.0.0.1:%d%s", port, path)
-	if b.Version, err = version(ctx, port); err != nil {
-		b.Close()
-		return nil, err
+	case <-ctx.Done():
+		// Stopped while starting; the caller sees ctx and closes it.
+	case <-time.After(startupGrace):
 	}
 	return b, nil
 }
@@ -159,69 +155,42 @@ func (t *tailWriter) String() string {
 	return string(t.buf)
 }
 
-// waitDevTools polls for the DevToolsActivePort file Chromium writes once
-// its debugging endpoint listens.
-func waitDevTools(ctx context.Context, profile string, exited <-chan struct{}) (int, string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+// env is the browser's environment. An open-source Chromium without Google
+// API keys shows an infobar saying so on every launch; "no" turns it off.
+func env(base []string) []string {
+	out := append([]string(nil), base...)
+	for _, k := range []string{"GOOGLE_API_KEY", "GOOGLE_DEFAULT_CLIENT_ID", "GOOGLE_DEFAULT_CLIENT_SECRET"} {
+		set := false
+		for _, kv := range base {
+			if strings.HasPrefix(kv, k+"=") {
+				set = true
+				break
+			}
+		}
+		if !set {
+			out = append(out, k+"=no")
+		}
+	}
+	return out
+}
+
+// version asks the executable which browser it is. On Windows Chromium
+// answers --version by starting a browser, so it is not asked there.
+func version(ctx context.Context, exe string) (string, error) {
+	if runtime.GOOS == "windows" {
+		return "", nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	file := filepath.Join(profile, "DevToolsActivePort")
-	tick := time.NewTicker(50 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		if port, path, err := readDevToolsPort(file); err == nil {
-			return port, path, nil
+	out, err := exec.CommandContext(ctx, exe, "--version").CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if len(msg) > 2048 {
+			msg = msg[len(msg)-2048:]
 		}
-		select {
-		case <-exited:
-			return 0, "", errors.New("chromium exited before DevTools started")
-		case <-ctx.Done():
-			return 0, "", errors.New("chromium did not open DevTools within 60s")
-		case <-tick.C:
-		}
+		return "", fmt.Errorf("chromium --version: %w; output: %s", err, msg)
 	}
-}
-
-func readDevToolsPort(file string) (int, string, error) {
-	f, err := os.Open(file)
-	if err != nil {
-		return 0, "", err
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	var lines []string
-	for sc.Scan() {
-		lines = append(lines, strings.TrimSpace(sc.Text()))
-	}
-	if len(lines) < 2 {
-		return 0, "", errors.New("DevToolsActivePort is incomplete")
-	}
-	port, err := strconv.Atoi(lines[0])
-	if err != nil || port <= 0 || !strings.HasPrefix(lines[1], "/devtools/browser/") {
-		return 0, "", fmt.Errorf("DevToolsActivePort is malformed: %q", lines)
-	}
-	return port, lines[1], nil
-}
-
-// version asks the DevTools endpoint which browser it is.
-func version(ctx context.Context, port int) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/json/version", port), nil)
-	if err != nil {
-		return "", err
-	}
-	// Loopback only, never through a proxy from the environment.
-	client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("reading chromium version: %w", err)
-	}
-	defer resp.Body.Close()
-	var v struct {
-		Browser string `json:"Browser"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
-		return "", fmt.Errorf("reading chromium version: %w", err)
-	}
-	return v.Browser, nil
+	return strings.TrimSpace(string(out)), nil
 }
 
 // Done is closed when the browser process exits, for example because the

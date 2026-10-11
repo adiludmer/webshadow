@@ -120,19 +120,6 @@ func TestLocatePrefersFlagThenEnv(t *testing.T) {
 	}
 }
 
-func TestReadDevToolsPort(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "DevToolsActivePort")
-	os.WriteFile(file, []byte("40123\n/devtools/browser/abc-123\n"), 0o600)
-	port, path, err := readDevToolsPort(file)
-	if err != nil || port != 40123 || path != "/devtools/browser/abc-123" {
-		t.Errorf("got %d %q %v", port, path, err)
-	}
-	os.WriteFile(file, []byte("40123\n"), 0o600)
-	if _, _, err := readDevToolsPort(file); err == nil {
-		t.Error("accepted a half-written file")
-	}
-}
-
 func TestArgs(t *testing.T) {
 	o := LaunchOptions{ProfileDir: "/p", ProxyAddr: "127.0.0.1:8080", SPKIHash: "abc=", Headless: true, StartURL: "https://example.com/"}
 	args := o.Args()
@@ -141,13 +128,16 @@ func TestArgs(t *testing.T) {
 		"--proxy-server=http://127.0.0.1:8080",
 		"--proxy-bypass-list=<-loopback>",
 		"--ignore-certificate-errors-spki-list=abc=",
-		"--remote-debugging-port=0",
-		"--remote-debugging-address=127.0.0.1",
 		"--disable-quic",
 		"--headless=new",
 	} {
 		if !slices.Contains(args, want) {
 			t.Errorf("args missing %s", want)
+		}
+	}
+	for _, a := range args {
+		if strings.HasPrefix(a, "--remote-debugging") {
+			t.Errorf("the browser opens a DevTools endpoint: %s", a)
 		}
 	}
 	if args[len(args)-1] != "https://example.com/" {
